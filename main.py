@@ -6,13 +6,13 @@ import threading
 import random
 from networking import setup_server, setup_client, send_host_state_to_remote, send_remote_state_to_host, receive_game_state, log_message
 from cfg import (screen_width, screen_height, BAR_WIDTH, BAR_HEIGHT, BAR_X, BAR_Y,
-                    WHITE, BLACK, RED, GREEN, BLUE, DARK_BLUE, initial_player_x, initial_player_y,
+                    WHITE, BLACK, RED, GREEN, BLUE, DARK_BLUE, GRAY, initial_player_x, initial_player_y,
                     number_of_enemies, is_multiplayer, network_socket, is_host, screen, projectiles, enemies_per_wave, wave_increase_factor)
 
 class Player:
     def __init__(self):
         self.image = pygame.Surface((50,50))
-        self.image.fill((0, 128, 255))
+        self.image.fill((129, 0, 204))
         self.rect = self.image.get_rect()
         self.speed = 3  # Normal speed
         self.sprint_speed = 6  # Sprinting speed
@@ -90,7 +90,7 @@ class Player:
 class Enemy:
     def __init__(self, x, y):
         self.image = pygame.Surface((40, 40))
-        self.image.fill((255, 0, 0))  #Red color for the enemy
+        self.image.fill((255, 157, 0))  #Red color for the enemy
         self.rect = self.image.get_rect(topleft=(x, y))
         self.speed = 1
         self.x, self.y = float(x), float(y)
@@ -171,13 +171,8 @@ class Button:
         return (self.x <= x <= self.x + self.width) and (self.y <= y <= self.y + self.height)
 
     def activate(self):
-        # If the action is set, call it with the provided arguments
         if self.action:
-            self.action(*self.action_args)
-
-
-
-
+            return self.action(*self.action_args)
 
 class Menu:
     def __init__(self, screen):
@@ -196,7 +191,7 @@ class Menu:
             mouse_pos = event.pos
             for button in self.buttons:
                 if button.is_clicked(mouse_pos):
-                    button.activate()  # Call the activate method here
+                    return button.activate()
 
 
 
@@ -280,8 +275,8 @@ def draw_game(screen, player, enemies, projectiles, is_multiplayer, remote_playe
         projectile.draw(screen)
 
     # Draw UI elements (HP bar, Stamina bar, etc.)
-    draw_bar(screen, player.hp, player.max_hp, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, GREEN, RED)
-    draw_bar(screen, player.stamina, player.max_stamina, BAR_X, BAR_Y - 40, BAR_WIDTH, BAR_HEIGHT, BLUE, DARK_BLUE)
+    draw_bar(screen, player.hp, player.max_hp, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, RED, GRAY)
+    draw_bar(screen, player.stamina, player.max_stamina, BAR_X, BAR_Y + 40, BAR_WIDTH, BAR_HEIGHT, GREEN, GRAY)
     draw_text(screen, f"Enemies Killed: {enemies_killed}", 55, 10, 10, WHITE)
     draw_text(screen, f"Wave: {current_wave}", 55, screen_width // 2 - 75, 10, WHITE)
 
@@ -311,6 +306,8 @@ def update_enemies(enemies, received_enemies_data):
             # Example: enemy.hp = enemy_data['hp']
 
 def update_game_state(local_player, remote_player, enemies, projectiles):
+    global enemies_killed
+
     # Update local player
     local_player.update()
 
@@ -336,6 +333,7 @@ def update_game_state(local_player, remote_player, enemies, projectiles):
                 if float_based_collision(projectile, enemy):
                     enemies.remove(enemy)
                     projectiles.remove(projectile)
+                    enemies_killed += 1  # Increment the kill count
                     break
 
     # Check for collisions between enemies and players
@@ -422,8 +420,8 @@ def pause_menu(screen):
     pause_menu.add_button(Button("Resume", screen_width // 2 - 100, 200, 200, 50, action=lambda: "resume"))
     pause_menu.add_button(Button("Quit", screen_width // 2 - 100, 300, 200, 50, action=lambda: "quit"))
 
-    overlay = pygame.Surface((screen_width, screen_height))  # Create an overlay
-    overlay.set_alpha(128)  # Semi-transparency
+    overlay = pygame.Surface((screen_width, screen_height))
+    overlay.set_alpha(128)
     overlay.fill((0, 0, 0))
     screen.blit(overlay, (0, 0))
 
@@ -438,10 +436,10 @@ def pause_menu(screen):
                 if action:
                     return action
 
-        screen.fill((0, 0, 0), special_flags=pygame.BLEND_RGBA_MULT)  # Apply the overlay
+        screen.fill((0, 0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         pause_menu.draw()
         pygame.display.flip()
-
+        
 def game_over(screen, current_wave, enemies_killed):
     game_over_menu = Menu(screen)
     game_over_menu.add_button(Button("Main Menu", screen_width // 2 - 125, 300, 250, 50, action=back_to_main_menu))  # Add the button to the menu
@@ -690,7 +688,7 @@ def gameLoop():
     enemies_killed = 0
     current_wave = 1
     last_shot_time = 0
-    shot_delay = 500  # milliseconds
+    shot_delay = 500 # milliseconds
     in_intermission = False
     intermission_timer = 0
     mouse_button_down = False
@@ -708,9 +706,11 @@ def gameLoop():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                action = pause_menu()
+                action = pause_menu(screen)
                 if action == "quit":
-                    return "menu"
+                    running = False
+                elif action == "resume":
+                    continue
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_button_down = True
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -718,6 +718,9 @@ def gameLoop():
 
         # Player input handling
         handle_player_input(local_player)
+
+        # Handle collisions between enemies
+        handle_enemy_collisions(enemies)
 
         # Update game state
         update_game_state(local_player, remote_player, enemies, projectiles)

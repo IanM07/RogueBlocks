@@ -14,9 +14,10 @@ BAR_Y = 10
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
+GREEN = (40, 224, 70)
+BLUE = (128, 220, 255)
 DARK_BLUE = (50, 50, 255)
+GRAY = (171, 197, 207)
 
 # Player and Enemy variables
 initial_player_x = screen_width // 2
