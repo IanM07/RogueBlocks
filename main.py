@@ -138,6 +138,7 @@ class Projectile:
         self.x_velocity = x_velocity
         self.y_velocity = y_velocity
         self.id = Projectile.next_id
+        self.is_active = True  
         Projectile.next_id += 1
 
     def update(self):
@@ -271,8 +272,10 @@ def draw_game(screen, player, enemies, projectiles, is_multiplayer, remote_playe
     # Draw enemies and projectiles
     for enemy in enemies:
         enemy.draw(screen)
+    # Draw projectiles
     for projectile in projectiles:
-        projectile.draw(screen)
+        if projectile.is_active:
+            projectile.draw(screen)
 
     # Draw UI elements (HP bar, Stamina bar, etc.)
     draw_bar(screen, player.hp, player.max_hp, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, RED, GRAY)
@@ -323,18 +326,19 @@ def update_game_state(local_player, remote_player, enemies, projectiles):
 
     # Update projectiles
     for projectile in projectiles[:]:
-        projectile.update()
+        if projectile.is_active:
+            projectile.update()
 
-        # Check if the projectile is out of bounds or collides with enemies
-        if projectile_out_of_bounds(projectile):
-            projectiles.remove(projectile)
-        else:
-            for enemy in enemies[:]:
-                if float_based_collision(projectile, enemy):
-                    enemies.remove(enemy)
-                    projectiles.remove(projectile)
-                    enemies_killed += 1  # Increment the kill count
-                    break
+            # Check if the projectile is out of bounds or collides with enemies
+            if projectile_out_of_bounds(projectile):
+                projectile.is_active = False
+            else:
+                for enemy in enemies[:]:
+                    if float_based_collision(projectile, enemy):
+                        enemies.remove(enemy)
+                        projectile.is_active = False
+                        enemies_killed += 1
+                        break
 
     # Check for collisions between enemies and players
     for enemy in enemies[:]:
@@ -667,17 +671,17 @@ def create_projectile_based_on_joiner_signal(signal):
     return Projectile(round(signal['player_x'] + 25), round(signal['player_y'] + 25), x_velocity, y_velocity)
 
 def update_projectiles(projectiles, received_projectiles):
-    existing_ids = [p.id for p in projectiles]
     for p_data in received_projectiles:
-        if p_data['id'] in existing_ids:
-            # Update existing projectile
-            projectile = next(p for p in projectiles if p.id == p_data['id'])
+        projectile = next((p for p in projectiles if p.id == p_data['id']), None)
+        
+        if projectile:
             projectile.x = p_data['x']
             projectile.y = p_data['y']
+            projectile.is_active = p_data.get('is_active', True)  # Default to True if not present
         else:
-            # Add new projectile
             new_projectile = Projectile(p_data['x'], p_data['y'], 0, 0)
             new_projectile.id = p_data['id']
+            new_projectile.is_active = p_data.get('is_active', True)
             projectiles.append(new_projectile)
 
 def gameLoop():

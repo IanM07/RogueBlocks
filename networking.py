@@ -41,7 +41,7 @@ def serialize_game_state(player, enemies, projectiles):
     try:
         game_state = {
             'player': {'x': player.x, 'y': player.y, 'hp': player.hp},
-            'projectiles': [{'id': p.id, 'x': p.x, 'y': p.y} for p in projectiles] if projectiles else [],
+            'projectiles': [{'id': p.id, 'x': p.x, 'y': p.y, 'is_active': p.is_active} for p in projectiles] if projectiles else [],
             'enemies': [{'x': e.x, 'y': e.y} for e in enemies] if enemies else [],
             'enemy_count': len(enemies) if enemies else 0
         }
