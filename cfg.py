@@ -18,6 +18,8 @@ GREEN = (40, 224, 70)
 BLUE = (128, 220, 255)
 DARK_BLUE = (50, 50, 255)
 GRAY = (171, 197, 207)
+YELLOW = (255, 255, 0)
+PURPLE = (129, 0, 204)
 
 # Player and Enemy variables
 initial_player_x = screen_width // 2
@@ -27,8 +29,10 @@ projectiles = []
 powerups = []
 enemies_per_wave = 5
 wave_increase_factor = 3
-
-# Multiplayer variables
-is_multiplayer = False  # Global flag
-network_socket = None
-is_host = False
+powerup_info = {
+    "health_orb": {"chance": 10, "color": RED},       
+    "invincibility": {"chance": 2.5, "color": YELLOW},   
+    "infinite_stamina": {"chance": 2.5, "color": GREEN},
+    "shoot_speed_boost": {"chance": 5, "color": WHITE},
+    "move_speed_boost": {"chance": 5, "color": PURPLE}
+}

@@ -9,10 +9,12 @@ from cfg import *
 class Player:
     def __init__(self):
         self.image = pygame.Surface((50,50))
-        self.image.fill((129, 0, 204))
+        self.image.fill(PURPLE)
         self.rect = self.image.get_rect()
         self.speed = 3  # Normal speed
+        self.base_speed = 3  # Normal speed
         self.sprint_speed = 6  # Sprinting speed
+        self.base_sprint_speed = 6  # Sprinting speed
         self.is_sprinting = False
         self.x, self.y = float(initial_player_x), float(initial_player_y)
         self.hp = 10
@@ -24,6 +26,10 @@ class Player:
         self.is_sprinting = False
         self.last_shot_time = 0
         self.shot_delay = 500
+        self.base_shot_delay = 500
+        self.invincible = False
+        self.infinite_stamina = False
+        self.powerup_timers = {}
 
     def handle_keys(self, keys):
         keys = pygame.key.get_pressed()
@@ -44,10 +50,39 @@ class Player:
             self.y -= current_speed
         if keys[pygame.K_s]:
             self.y += current_speed
-            
+
+    def activate_powerup(self, powerup_type):
+        if powerup_type == "invincibility":
+            self.invincible = True
+        elif powerup_type == "infinite_stamina":
+            self.infinite_stamina = True
+        elif powerup_type == "shoot_speed_boost":
+            self.shot_delay = self.base_shot_delay * 0.5  # Example: 50% of original delay
+        elif powerup_type == "move_speed_boost":
+            self.sprint_speed = self.base_sprint_speed * 1.5
+            self.speed = self.base_sprint_speed * 1.5
+
+        # Set timer for power-up duration (e.g., 10 seconds)
+        self.powerup_timers[powerup_type] = pygame.time.get_ticks() + 7000
+
+    def deactivate_powerup(self, powerup_type):
+        if powerup_type in self.powerup_timers:
+            if powerup_type == "invincibility":
+                self.invincible = False
+            elif powerup_type == "infinite_stamina":
+                self.infinite_stamina = False
+            elif powerup_type == "shoot_speed_boost":
+                self.shot_delay = self.base_shot_delay
+            elif powerup_type == "move_speed_boost":
+                self.speed = self.base_speed
+                self.sprint_speed = self.base_sprint_speed
+
+            del self.powerup_timers[powerup_type]
+
     def update(self):
         # Sprinting depletes stamina
-        if self.is_sprinting:
+        # Sprinting depletes stamina, but only if infinite stamina is not active
+        if self.is_sprinting and not self.infinite_stamina:
             self.stamina -= self.stamina_use_rate
             self.stamina = max(self.stamina, 0)
 
@@ -57,9 +92,15 @@ class Player:
             self.stamina += self.stamina_recovery_rate
             self.stamina = min(self.stamina, self.max_stamina)
 
+        current_time = pygame.time.get_ticks()
+        for powerup_type in list(self.powerup_timers.keys()):
+            if current_time > self.powerup_timers[powerup_type]:
+                self.deactivate_powerup(powerup_type)
+
     def take_damage(self):
         current_time = pygame.time.get_ticks()
-        self.hp -= 1  # Reduce HP by 1
+        if(self.invincible == False):
+            self.hp -= 1  # Reduce HP by 1
 
     def shoot(self, target_x, target_y):
         # Calculate direction vector towards the target (mouse position)
@@ -147,18 +188,14 @@ class Projectile:
         surface.blit(self.image, self.rect)
 
 class PowerUp:
-    def __init__(self, x, y, powerup_type="health_orb"):
+    def __init__(self, x, y, powerup_types, color):
         self.x, self.y = x, y
-        self.radius = 10  # Radius of the orb
-        self.color = (0, 255, 0)  # Green color for health orb
-
-        # Create a transparent surface
+        self.radius = 10
+        self.types = powerup_types
+        self.color = color
         self.image = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
-        # Draw a circle onto the surface
         pygame.draw.circle(self.image, self.color, (self.radius, self.radius), self.radius)
-
         self.rect = self.image.get_rect(center=(x, y))
-        self.type = powerup_type
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
@@ -310,10 +347,11 @@ def update_game_state(local_player, enemies, projectiles):
                 for enemy in enemies[:]:
                     if float_based_collision(projectile, enemy):
                         # Check for power-up spawn
-                        if random.random() < 0.15:  # 15% chance
-                            powerup = PowerUp(enemy.x, enemy.y, "health_orb")
+                        powerup_types = spawn_powerups(enemy.x, enemy.y)
+                        powerup = create_combined_powerup(enemy.x, enemy.y, powerup_types)
+                        if powerup:
                             powerups.append(powerup)
-
+                            
                         enemies.remove(enemy)
                         projectile.is_active = False
                         enemies_killed += 1
@@ -322,10 +360,8 @@ def update_game_state(local_player, enemies, projectiles):
     # Check for collisions between player and power-ups
     for powerup in powerups[:]:
         if float_based_collision(powerup, local_player):
-            if powerup.type == "health_orb":
-                local_player.hp = min(local_player.hp + 0.33*local_player.max_hp, local_player.max_hp)  # Increase HP
-                if local_player.hp > local_player.max_hp:
-                    local_player.hp = local_player.max_hp
+            for p_type in powerup.types:
+                local_player.activate_powerup(p_type)
             powerups.remove(powerup)
 
     # Check for collisions between enemies and players
@@ -333,6 +369,31 @@ def update_game_state(local_player, enemies, projectiles):
         if float_based_collision(enemy, local_player):
             local_player.take_damage()
             enemies.remove(enemy)
+
+def spawn_powerups(enemy_x, enemy_y):
+    spawned_powerups = []
+    for powerup_type, info in powerup_info.items():
+        if random.randint(1, 100) <= info["chance"]:
+            spawned_powerups.append(powerup_type)
+
+    return spawned_powerups
+
+def create_combined_powerup(x, y, powerup_types):
+    if not powerup_types:
+        return None
+
+    # Mix colors
+    total_color = [0, 0, 0]
+    for p_type in powerup_types:
+        color = powerup_info[p_type]["color"]
+        total_color = [sum(x) for x in zip(total_color, color)]
+
+    # Normalize the color
+    max_color = max(total_color)
+    if max_color > 255:
+        total_color = [int(c * 255 / max_color) for c in total_color]
+
+    return PowerUp(x, y, powerup_types, tuple(total_color))
 
 def projectile_out_of_bounds(projectile):
     return (projectile.x < 0 or projectile.x > screen_width or
