@@ -3,7 +3,7 @@
 
 ## Core Features
 
-~~### 1. Health Orb Drops~~ Complete!
+### ~~1. Health Orb Drops~~ Complete!
 
 ~~Implement a system where players can regain health through orbs dropped by defeated enemies or found in hidden areas. These orbs should vary in the amount of health they restore, potentially influenced by the player's health status or game difficulty.~~
 
