@@ -1,5 +1,5 @@
 # RogueBlocks
-A simple top down shooter roguelike with LAN coop multiplayer. This is the multiplayer version of the game and will no longer receive development. For all current releases, please see the main branch.
+A simple top down shooter roguelike. For all current releases, please see the main branch.
 
 Requirements:
 pip install pygame
