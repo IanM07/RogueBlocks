@@ -24,6 +24,7 @@ initial_player_x = screen_width // 2
 initial_player_y = screen_height // 2
 number_of_enemies = 10
 projectiles = []
+powerups = []
 enemies_per_wave = 5
 wave_increase_factor = 3
 

@@ -4,10 +4,7 @@ import json
 import socket
 import threading
 import random
-from networking import setup_server, setup_client, send_host_state_to_remote, send_remote_state_to_host, receive_game_state, log_message
-from cfg import (screen_width, screen_height, BAR_WIDTH, BAR_HEIGHT, BAR_X, BAR_Y,
-                    WHITE, BLACK, RED, GREEN, BLUE, DARK_BLUE, GRAY, initial_player_x, initial_player_y,
-                    number_of_enemies, is_multiplayer, network_socket, is_host, screen, projectiles, enemies_per_wave, wave_increase_factor)
+from cfg import *
 
 class Player:
     def __init__(self):
@@ -92,7 +89,7 @@ class Enemy:
         self.image = pygame.Surface((40, 40))
         self.image.fill((255, 157, 0))  #Red color for the enemy
         self.rect = self.image.get_rect(topleft=(x, y))
-        self.speed = 1
+        self.speed = 4.5
         self.x, self.y = float(x), float(y)
         self.damage = 1
         self.jitter_frequency = 120  # Adjust how often the enemy changes direction (in frames)
@@ -145,6 +142,23 @@ class Projectile:
         self.x += self.x_velocity
         self.y += self.y_velocity
         self.rect.x, self.rect.y = round(self.x), round(self.y)
+
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
+
+class PowerUp:
+    def __init__(self, x, y, powerup_type="health_orb"):
+        self.x, self.y = x, y
+        self.radius = 10  # Radius of the orb
+        self.color = (0, 255, 0)  # Green color for health orb
+
+        # Create a transparent surface
+        self.image = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
+        # Draw a circle onto the surface
+        pygame.draw.circle(self.image, self.color, (self.radius, self.radius), self.radius)
+
+        self.rect = self.image.get_rect(center=(x, y))
+        self.type = powerup_type
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
@@ -220,36 +234,6 @@ def handle_player_input(player):
         projectiles.append(new_projectile)
         player.last_shot_time = current_time
 
-def update_game_state(local_player, remote_player, enemies, projectiles):
-    # Update local player
-    local_player.update()
-
-    # Update remote player if it exists
-    if remote_player:
-        remote_player.update()
-
-    # Update enemies
-    for enemy in enemies:
-        nearest_player = find_nearest_player(enemy, [local_player, remote_player])
-        if nearest_player:
-            enemy.move_towards_player(nearest_player)
-
-    # Update projectiles
-    for projectile in projectiles[:]:  # Iterate over a copy of the list
-        projectile.update()
-
-        # Check if the projectile is out of bounds
-        if projectile_out_of_bounds(projectile):
-            projectiles.remove(projectile)
-            continue
-
-        # Check for collisions with enemies
-        for enemy in enemies[:]:
-            if float_based_collision(projectile, enemy):
-                enemies.remove(enemy)
-                projectiles.remove(projectile)
-                break
-
 def draw_text(surface, text, font_size, x, y, color=(255, 255, 255), center_x=False):
     font = pygame.font.Font(None, font_size)
     text_surface = font.render(text, True, color)
@@ -261,17 +245,20 @@ def draw_text(surface, text, font_size, x, y, color=(255, 255, 255), center_x=Fa
     text_rect.y = y
     surface.blit(text_surface, text_rect)
 
-def draw_game(screen, player, enemies, projectiles, is_multiplayer, remote_player):
+def draw_game(screen, player, enemies, projectiles):
     screen.fill((0, 0, 0))  # Clear screen with black background
 
     # Draw player and remote player (in multiplayer mode)
     player.draw(screen)
-    if is_multiplayer and remote_player:
-        remote_player.draw(screen)
 
     # Draw enemies and projectiles
     for enemy in enemies:
         enemy.draw(screen)
+
+    # Draw power-ups
+    for powerup in powerups:
+        powerup.draw(screen)
+
     # Draw projectiles
     for projectile in projectiles:
         if projectile.is_active:
@@ -289,14 +276,6 @@ def draw_game(screen, player, enemies, projectiles, is_multiplayer, remote_playe
 
     pygame.display.flip()  # Update the full display Surface to the screen
 
-def update_remote_player(remote_player, player_data):
-    # Update the remote player's position
-    remote_player.x = player_data['x']
-    remote_player.y = player_data['y']
-
-    # Update other properties as needed
-    remote_player.hp = player_data.get('hp', remote_player.hp)
-
 def update_enemies(enemies, received_enemies_data):
     # Assuming that the number and order of enemies are the same
     # between the host and the remote player
@@ -308,21 +287,16 @@ def update_enemies(enemies, received_enemies_data):
             # Update any other necessary attributes, like health, state, etc.
             # Example: enemy.hp = enemy_data['hp']
 
-def update_game_state(local_player, remote_player, enemies, projectiles):
+def update_game_state(local_player, enemies, projectiles):
     global enemies_killed
 
     # Update local player
     local_player.update()
 
-    # Update remote player if it exists
-    if remote_player:
-        remote_player.update()
-
     # Update enemies
     for enemy in enemies:
         # The enemy should move towards the nearest player
-        nearest_player = find_nearest_player(enemy, [local_player, remote_player])
-        enemy.move_towards_player(nearest_player)
+        enemy.move_towards_player(local_player)
 
     # Update projectiles
     for projectile in projectiles[:]:
@@ -335,18 +309,29 @@ def update_game_state(local_player, remote_player, enemies, projectiles):
             else:
                 for enemy in enemies[:]:
                     if float_based_collision(projectile, enemy):
+                        # Check for power-up spawn
+                        if random.random() < 0.15:  # 15% chance
+                            powerup = PowerUp(enemy.x, enemy.y, "health_orb")
+                            powerups.append(powerup)
+
                         enemies.remove(enemy)
                         projectile.is_active = False
                         enemies_killed += 1
                         break
+                    
+    # Check for collisions between player and power-ups
+    for powerup in powerups[:]:
+        if float_based_collision(powerup, local_player):
+            if powerup.type == "health_orb":
+                local_player.hp = min(local_player.hp + 0.33*local_player.max_hp, local_player.max_hp)  # Increase HP
+                if local_player.hp > local_player.max_hp:
+                    local_player.hp = local_player.max_hp
+            powerups.remove(powerup)
 
     # Check for collisions between enemies and players
     for enemy in enemies[:]:
         if float_based_collision(enemy, local_player):
             local_player.take_damage()
-            enemies.remove(enemy)
-        elif remote_player and float_based_collision(enemy, remote_player):
-            remote_player.take_damage()  # Assuming remote_player has a similar take_damage method
             enemies.remove(enemy)
 
 def projectile_out_of_bounds(projectile):
@@ -380,9 +365,8 @@ def main_menu(screen):
 
     # Add buttons to the main menu
     main_menu.add_button(Button("Single Player", 100, 200, 200, 50, action=gameLoop))
-    main_menu.add_button(Button("Multiplayer", 100, 300, 200, 50, action=multiplayer_menu, action_args=[screen]))
-    main_menu.add_button(Button("Instructions", 100, 400, 150, 50, action=instructions))
-    main_menu.add_button(Button("Quit", 100, 500, 100, 50, action=quit_game))
+    main_menu.add_button(Button("Instructions", 100, 300, 150, 50, action=instructions))
+    main_menu.add_button(Button("Quit", 100, 400, 100, 50, action=quit_game))
 
     running = True
     while running:
@@ -470,119 +454,6 @@ def game_over(screen, current_wave, enemies_killed):
         
         pygame.display.flip()
 
-def multiplayer_menu(screen):
-    multiplayer_menu = Menu(screen)
-    multiplayer_menu.add_button(Button("Join Game", 100, 300, 200, 50, action=join_game))
-    multiplayer_menu.add_button(Button("Host Game", 100, 200, 200, 50, action=host_game))
-    multiplayer_menu.add_button(Button("Back", 100, 400, 100, 50, action=back_to_main_menu))
-
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            else:
-                multiplayer_menu.handle_event(event)
-
-        screen.fill((0, 0, 0))  # Fill screen with background color
-        multiplayer_menu.draw()
-        pygame.display.update()
-
-def host_game():
-    global network_socket, is_host, waiting_for_connection, is_multiplayer
-    # Initialize variables
-    waiting_for_connection = True
-    is_multiplayer = True
-    is_host = False
-
-    predefined_port = 54365  # Example port number
-    host_ip = socket.gethostbyname(socket.gethostname())
-    print(f"Hosting game on {host_ip}:{predefined_port}")
-
-    def server_thread():
-        global network_socket, is_host, waiting_for_connection
-        try:
-            # Set up the server and wait for a client connection
-            network_socket = setup_server('', predefined_port)
-            print(f"Client connected. Starting game...")
-
-            # Once connected, set flags and exit lobby
-            is_host = True
-            waiting_for_connection = False
-        except Exception as e:
-            print(f"Failed to host game: {e}")
-            # Optionally, add logic to handle server setup failure
-    
-    # Start the server thread
-    threading.Thread(target=server_thread, daemon=True).start()
-
-    # Lobby screen
-    while waiting_for_connection:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-        screen.fill(BLACK)
-        draw_text(screen, 'Waiting for other players to join...', 55, 20, 20, WHITE)
-        pygame.display.update()
-
-    # After exiting the lobby loop, start the game loop
-    if is_host:
-        gameLoop()
-
-def join_game():
-    global network_socket, is_host, is_multiplayer
-    is_multiplayer = True
-    # Implement the logic to join a game
-    # This could include asking the player to enter the host's IP address and port
-    host_ip = input("Enter host IP address: ")  # Use a proper input method
-    port = 54365
-    network_socket = setup_client(host_ip, int(port))
-    is_host = False
-    gameLoop()
-
-def find_nearest_player(enemy, players):
-    nearest_player = None
-    min_distance = float('inf')
-    for player in players:
-        if player:  # Ensure player is not None
-            distance = ((player.x - enemy.x)**2 + (player.y - enemy.y)**2)**0.5
-            if distance < min_distance:
-                min_distance = distance
-                nearest_player = player
-    return nearest_player
-
-def handle_multiplayer_interactions(network_socket, local_player, remote_player, projectiles, enemies):
-    if is_multiplayer:
-        if is_host:
-            try:
-                # Host-specific logic: sending full game state and processing joiner's state
-                send_host_state_to_remote(network_socket, local_player, enemies, projectiles)
-                joiner_state = receive_game_state(network_socket)
-                log_message("Sending game state to remote player")
-            except Exception as e:
-                log_message(f"Error in host multiplayer interactions: {e}")
-
-            if joiner_state:
-                update_remote_player(remote_player, joiner_state['player'])
-                update_projectiles(projectiles, joiner_state['projectiles'])
-
-        else:
-            try:
-                # Joiner-specific logic: sending player state and receiving full game state
-                send_remote_state_to_host(network_socket, local_player, projectiles)
-                host_state = receive_game_state(network_socket)
-                log_message("Sending player state to host")
-            except Exception as e:
-                log_message(f"Error in remote multiplayer interactions: {e}")
-
-            if host_state:
-                update_remote_player(remote_player, host_state['player'])
-                update_projectiles(projectiles, host_state['projectiles'])
-                update_enemies(enemies, host_state['enemies'])
-
 def handle_enemy_collisions(enemies):
     for i, enemy1 in enumerate(enemies):
         for j, enemy2 in enumerate(enemies):
@@ -636,40 +507,6 @@ def spawn_enemy(player_x, player_y):
 
     return Enemy(x, y)
 
-def send_shoot_signal(sock, player):
-    try:
-        mouse_x, mouse_y = pygame.mouse.get_pos()
-        shoot_signal = {
-            'action': 'shoot',
-            'player_x': player.x,
-            'player_y': player.y,
-            'mouse_x': mouse_x,
-            'mouse_y': mouse_y
-        }
-        serialized_data = json.dumps(shoot_signal).encode('utf-8')
-        sock.sendall(serialized_data)
-    except Exception as e:
-        print(f"Error sending shoot signal: {e}")
-
-def create_projectile_based_on_joiner_signal(signal):
-    # Calculate direction vector towards the target (mouse position)
-    direction_x = signal['mouse_x'] - signal['player_x']
-    direction_y = signal['mouse_y'] - signal['player_y']
-
-    # Normalize the direction vector (to maintain constant projectile speed)
-    magnitude = (direction_x**2 + direction_y**2)**0.5
-    if magnitude != 0:
-        direction_x /= magnitude
-        direction_y /= magnitude
-
-    # Set the speed of the projectile
-    speed = 30  # Adjust as needed
-    x_velocity = direction_x * speed
-    y_velocity = direction_y * speed
-
-    # Create and return the new projectile
-    return Projectile(round(signal['player_x'] + 25), round(signal['player_y'] + 25), x_velocity, y_velocity)
-
 def update_projectiles(projectiles, received_projectiles):
     for p_data in received_projectiles:
         projectile = next((p for p in projectiles if p.id == p_data['id']), None)
@@ -685,7 +522,7 @@ def update_projectiles(projectiles, received_projectiles):
             projectiles.append(new_projectile)
 
 def gameLoop():
-    global network_socket, local_player, remote_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles
+    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles
 
     # Initialization
     running = True
@@ -701,7 +538,6 @@ def gameLoop():
     
     # Player initialization
     local_player = Player()
-    remote_player = Player() if is_multiplayer else None
     enemies = [spawn_enemy(local_player.x, local_player.y) for _ in range(enemies_per_wave)]
 
     while running:
@@ -727,16 +563,13 @@ def gameLoop():
         handle_enemy_collisions(enemies)
 
         # Update game state
-        update_game_state(local_player, remote_player, enemies, projectiles)
-
-        # Handle multiplayer interactions
-        handle_multiplayer_interactions(network_socket, local_player, remote_player, projectiles, enemies)
+        update_game_state(local_player, enemies, projectiles)
 
         # Manage game waves
         manage_waves(enemies, local_player)
 
         # Drawing
-        draw_game(screen, local_player, enemies, projectiles, is_multiplayer, remote_player)
+        draw_game(screen, local_player, enemies, projectiles)
 
         # Check for game over
         if local_player.hp <= 0:
