@@ -27,6 +27,8 @@ class Player:
         self.last_shot_time = 0
         self.shot_delay = 500
         self.base_shot_delay = 500
+        self.damage_reduction = 0
+        self.hp_regeneration_rate = 0
         self.invincible = False
         self.infinite_stamina = False
         self.powerup_timers = {}
@@ -61,6 +63,10 @@ class Player:
         elif powerup_type == "move_speed_boost":
             self.sprint_speed = self.base_sprint_speed * 1.5
             self.speed = self.base_sprint_speed * 1.5
+        elif powerup_type == "health_orb":
+            self.hp = self.hp + 0.3*self.max_hp
+            if (self.hp > self.max_hp):
+                self.hp = self.max_hp
 
         # Set timer for power-up duration (e.g., 10 seconds)
         self.powerup_timers[powerup_type] = pygame.time.get_ticks() + 7000
@@ -78,6 +84,33 @@ class Player:
                 self.sprint_speed = self.base_sprint_speed
 
             del self.powerup_timers[powerup_type]
+
+    def apply_upgrade(self, upgrade_name):
+        if upgrade_name == "Increased Movement Speed":
+            self.speed += self.base_speed * 0.1  # Increase speed by 10%
+            self.sprint_speed += self.base_sprint_speed * 0.1  # Increase sprint speed as well
+
+        elif upgrade_name == "Enhanced Fire Rate":
+            self.shot_delay *= 0.9  # Decrease delay by 10%
+
+        elif upgrade_name == "Extended Health":
+            self.max_hp += self.max_hp * 0.1  # Increase maximum health by 10%
+            self.hp = self.max_hp  # Refill health to the new max
+            self.hp_regeneration_rate += self.hp_regeneration_rate*0.1
+
+        elif upgrade_name == "Armor Upgrade":
+            # Assuming you have a damage reduction attribute; if not, you'll need to create one
+            self.damage_reduction = min(self.damage_reduction + 0.1, 0.8)  # Increase damage reduction by 10%, max of 100%
+
+        elif upgrade_name == "Extended Stamina":
+            self.max_stamina += self.max_stamina * 0.1  # Increase maximum stamina by 10%
+            self.stamina = self.max_stamina  # Refill stamina to the new max
+
+        elif upgrade_name == "Health Regeneration":
+            self.hp_regeneration_rate += 0.01*self.max_hp  # Assuming you will handle this in the update method
+
+        elif upgrade_name == "Stamina Regeneration Boost":
+            self.stamina_recovery_rate += self.stamina_recovery_rate * 0.1  # Increase stamina recovery rate by 10%
 
     def update(self):
         # Sprinting depletes stamina
@@ -100,7 +133,7 @@ class Player:
     def take_damage(self):
         current_time = pygame.time.get_ticks()
         if(self.invincible == False):
-            self.hp -= 1  # Reduce HP by 1
+            self.hp = self.hp - 1 + self.damage_reduction  # Reduce HP by 1 - total damage reduction
 
     def shoot(self, target_x, target_y):
         # Calculate direction vector towards the target (mouse position)
@@ -130,7 +163,7 @@ class Enemy:
         self.image = pygame.Surface((40, 40))
         self.image.fill((255, 157, 0))  #Red color for the enemy
         self.rect = self.image.get_rect(topleft=(x, y))
-        self.speed = 4.5
+        self.speed = 4
         self.x, self.y = float(x), float(y)
         self.damage = 1
         self.jitter_frequency = 120  # Adjust how often the enemy changes direction (in frames)
@@ -201,7 +234,7 @@ class PowerUp:
         surface.blit(self.image, self.rect)
 
 class Button:
-    def __init__(self, text, x, y, width, height, action=None, action_args=[]):
+    def __init__(self, text, x, y, width, height, action=None, action_args=[], bg_color=(255, 255, 255)):
         self.text = text
         self.x = x
         self.y = y
@@ -209,14 +242,17 @@ class Button:
         self.height = height
         self.action = action
         self.action_args = action_args
+        self.bg_color = bg_color
 
     def draw(self, screen):
-        # Draw the button rectangle
-        pygame.draw.rect(screen, (0, 0, 0), (self.x, self.y, self.width, self.height))
+        # Draw the button rectangle with the specified background color
+        pygame.draw.rect(screen, self.bg_color, (self.x, self.y, self.width, self.height))
+        
         # Draw the text on the button
-        font = pygame.font.SysFont(None, 30)
-        text_surf = font.render(self.text, True, (255, 255, 255))
-        screen.blit(text_surf, (self.x + 10, self.y + 10))
+        font = pygame.font.SysFont("Arial", 20)
+        text_surf = font.render(self.text, True, BLACK)  # White text
+        text_rect = text_surf.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
+        screen.blit(text_surf, text_rect)
 
     def is_clicked(self, mouse_pos):
         x, y = mouse_pos
@@ -224,7 +260,52 @@ class Button:
 
     def activate(self):
         if self.action:
-            return self.action(*self.action_args)
+            return self.action(*self.action_args)  # Pass action_args to the function
+
+
+class UpgradeTile:
+    def __init__(self, upgrade_name, description, x, y, width, height):
+        self.upgrade_name = upgrade_name
+        self.description = description
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.button = Button("Choose", x + 10, y + height - 40, width - 20, 30, action=self.select_upgrade)
+
+    def draw(self, screen):
+        # Set the colors
+        tile_color = (50, 50, 50)  # Dark gray background for the tile
+        text_color = (255, 255, 255)  # White text
+        button_color = (100, 100, 100)  # Light gray button
+        border_color = (255, 255, 255)  # White border
+        
+        # Draw the tile background with border
+        pygame.draw.rect(screen, border_color, (self.x, self.y, self.width, self.height))
+        pygame.draw.rect(screen, tile_color, (self.x + 2, self.y + 2, self.width - 4, self.height - 4))
+        
+        # Draw the upgrade name
+        font = pygame.font.SysFont("Arial", 16)
+        text_surf = font.render(self.upgrade_name, True, text_color)
+        text_rect = text_surf.get_rect()
+        text_rect.topleft = (self.x + 10, self.y + 10)
+        screen.blit(text_surf, text_rect)
+
+        # Draw the description text below the upgrade name
+        desc_surf = font.render(self.description, True, text_color)
+        desc_rect = desc_surf.get_rect()
+        desc_rect.topleft = (self.x + 10, text_rect.bottom + 5)
+        screen.blit(desc_surf, desc_rect)
+
+        # Update the button color and draw it
+        self.button.bg_color = button_color
+        self.button.draw(screen)
+
+    def select_upgrade(self):
+        global local_player
+        print(f"Upgrading to: {self.upgrade_name}")  # Debug print
+        local_player.apply_upgrade(self.upgrade_name)
+
 
 class Menu:
     def __init__(self, screen):
@@ -246,8 +327,6 @@ class Menu:
                     return button.activate()
 
 
-
-
 def draw_bar(surface, value, max_value, x, y, width, height, bar_color, background_color):
     # Draw the background of the bar (empty part)
     pygame.draw.rect(surface, background_color, (x, y, width, height))
@@ -257,6 +336,37 @@ def draw_bar(surface, value, max_value, x, y, width, height, bar_color, backgrou
 
     # Draw the current value
     pygame.draw.rect(surface, bar_color, (x, y, current_width, height))
+
+def draw_player_stats(screen, player):
+    # Define the starting position
+    start_x = 870  # adjust as needed for your screen layout
+    start_y = 85
+    line_height = 20  # space between lines
+
+    # Calculate shots per second (Hz) and round to 2 decimal places for readability
+    if player.shot_delay > 0:  # Prevent division by zero
+        shots_per_second = round(1 / (player.shot_delay / 1000), 2)
+    else:
+        shots_per_second = 'Max'
+
+    # Define stats to display
+    stats = [
+        f"Health: {player.hp}/{player.max_hp}",
+        f"Health Regeneration: {player.hp_regeneration_rate}/s",
+        f"Stamina: {player.stamina}/{player.max_stamina}",
+        f"Stamina Regeneration: {player.stamina_recovery_rate}/s",
+        f"Movement Speed: {player.speed} pixels/s",
+        f"Fire Rate: {shots_per_second} shots/s",
+        f"Damage Reduction: {player.damage_reduction}/hit",
+    ]
+
+    # Set the font for the stats
+    font = pygame.font.SysFont("Arial", 16)
+    
+    # Draw each stat
+    for i, stat in enumerate(stats):
+        text_surface = font.render(stat, True, (255, 255, 255))  # White color text
+        screen.blit(text_surface, (start_x, start_y + i * line_height))
 
 def handle_player_input(player):
     current_time = pygame.time.get_ticks()
@@ -271,6 +381,32 @@ def handle_player_input(player):
         projectiles.append(new_projectile)
         player.last_shot_time = current_time
 
+def initialize_upgrade_tiles(round_number):
+    global upgrade_tiles
+    available_upgrades = [
+        ("Increased Movement Speed", "+10% Base Movement Speed"),
+        ("Enhanced Fire Rate", "Decreases the delay between shots by 10%"),
+        ("Extended Health", "+10% Base Health Points"),
+        ("Armor Upgrade", "Reduces damage taken by 10%"),
+        ("Extended Stamina", "+10% Maximum Stamina"),
+        ("Health Regeneration", "Slowly regenerates health over time"),
+        ("Stamina Regeneration Boost", "Increases stamina regeneration rate by 10%"),
+        # Add other upgrades here if needed
+    ]
+
+    # Randomly select three unique upgrades
+    selected_upgrades = random.sample(available_upgrades, 3)
+
+    upgrade_tiles = []
+    for i, (name, desc) in enumerate(selected_upgrades):
+        tile_x = 10  # Adjust as needed
+        tile_y = 50 + i * 110  # Adjust the vertical position based on the tile number
+        tile_width = 300
+        tile_height = 100
+        upgrade_tiles.append(UpgradeTile(name, desc, tile_x, tile_y, tile_width, tile_height))
+
+    return upgrade_tiles
+        
 def draw_text(surface, text, font_size, x, y, color=(255, 255, 255), center_x=False):
     font = pygame.font.Font(None, font_size)
     text_surface = font.render(text, True, color)
@@ -310,6 +446,13 @@ def draw_game(screen, player, enemies, projectiles):
     if in_intermission:
         time_left = max(0, (intermission_timer - pygame.time.get_ticks()) // 1000)
         draw_text(screen, f"Next Round Begins in: {time_left}s", 36, screen_width // 2, BAR_Y + BAR_HEIGHT + 10, WHITE, center_x=True)
+        for tile_group in upgrade_tile_groups:
+            for tile in tile_group:
+                tile.draw(screen)
+                
+    # Updates player stats
+    draw_player_stats(screen, local_player)
+
 
     pygame.display.flip()  # Update the full display Surface to the screen
 
@@ -400,23 +543,24 @@ def projectile_out_of_bounds(projectile):
             projectile.y < 0 or projectile.y > screen_height)
 
 def manage_waves(enemies, player):
-    global in_intermission, intermission_timer, current_wave, enemies_per_wave, wave_increase_factor
-    
+    global in_intermission, intermission_timer, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected
+
     current_time = pygame.time.get_ticks()
-    time_between_waves = 5000  # 5 seconds
-    
-    # Check if all enemies are defeated and wave is completed
+
     if len(enemies) == 0 and not in_intermission:
         in_intermission = True
-        intermission_timer = current_time + time_between_waves
+        intermission_timer = current_time + 5000  # 5 seconds
+        upgrade_tile_groups.append(initialize_upgrade_tiles(current_wave))
+        upgrade_selected = False  # Reset the flag at the start of intermission
 
-    # Spawn new wave of enemies after intermission
-    if in_intermission and current_time >= intermission_timer:
+    if in_intermission and current_time >= intermission_timer and upgrade_selected:
         in_intermission = False
+        upgrade_selected = False  # Reset the flag after the intermission ends
         current_wave += 1
         enemies_per_wave += wave_increase_factor
         enemies.clear()
         enemies.extend([spawn_enemy(player.x, player.y) for _ in range(enemies_per_wave)])
+        upgrade_tile_groups.clear()  # Clear the upgrades after selection
 
 def main_menu(screen):
     global is_multiplayer
@@ -425,8 +569,8 @@ def main_menu(screen):
     main_menu = Menu(screen)
 
     # Add buttons to the main menu
-    main_menu.add_button(Button("Single Player", 100, 200, 200, 50, action=gameLoop))
-    main_menu.add_button(Button("Instructions", 100, 300, 150, 50, action=instructions))
+    main_menu.add_button(Button("Play", 100, 200, 200, 50, action=gameLoop))
+    main_menu.add_button(Button("Instructions", 100, 300, 150, 50, action=instructions, action_args=[screen]))
     main_menu.add_button(Button("Quit", 100, 400, 100, 50, action=quit_game))
 
     running = True
@@ -439,7 +583,7 @@ def main_menu(screen):
                 main_menu.handle_event(event)
 
         # Drawing the menu
-        screen.fill((255, 255, 255))  # Clear screen with white background
+        screen.fill(BLACK)  # Clear screen with black background
         main_menu.draw()
         pygame.display.update()
 
@@ -583,7 +727,7 @@ def update_projectiles(projectiles, received_projectiles):
             projectiles.append(new_projectile)
 
 def gameLoop():
-    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles
+    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected
 
     # Initialization
     running = True
@@ -594,12 +738,14 @@ def gameLoop():
     in_intermission = False
     intermission_timer = 0
     mouse_button_down = False
+    upgrade_selected = False
     clock = pygame.time.Clock()
     fps = 60
     
     # Player initialization
     local_player = Player()
     enemies = [spawn_enemy(local_player.x, local_player.y) for _ in range(enemies_per_wave)]
+    group_to_remove = None
 
     while running:
         # Event handling
@@ -617,6 +763,29 @@ def gameLoop():
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 mouse_button_down = False
 
+            # Separate handling for mouse button down
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                
+                # Handle firing a bullet
+                current_time = pygame.time.get_ticks()
+                if current_time - local_player.last_shot_time > local_player.shot_delay:
+                    new_projectile = local_player.shoot(mouse_x, mouse_y)
+                    projectiles.append(new_projectile)
+                    local_player.last_shot_time = current_time
+
+                # Check for button clicks on upgrade tiles during intermission
+                if in_intermission:
+                    for tile_group in upgrade_tile_groups:
+                        for tile in tile_group:
+                            if tile.button.is_clicked((mouse_x, mouse_y)):
+                                tile.select_upgrade()
+                                upgrade_selected = True  # Set the flag to True after selecting an upgrade
+                                upgrade_tile_groups.clear()  # Clear all upgrade tiles
+                                break
+                        if upgrade_selected:
+                            break
+        
         # Player input handling
         handle_player_input(local_player)
 
@@ -628,7 +797,7 @@ def gameLoop():
 
         # Manage game waves
         manage_waves(enemies, local_player)
-
+        
         # Drawing
         draw_game(screen, local_player, enemies, projectiles)
 

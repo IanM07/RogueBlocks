@@ -27,8 +27,10 @@ initial_player_y = screen_height // 2
 number_of_enemies = 10
 projectiles = []
 powerups = []
+upgrade_tile_groups = []
 enemies_per_wave = 5
 wave_increase_factor = 3
+upgrade_selected = False
 powerup_info = {
     "health_orb": {"chance": 10, "color": RED},       
     "invincibility": {"chance": 2.5, "color": YELLOW},   
