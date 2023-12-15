@@ -7,8 +7,8 @@
 
 ~~Implement a system where players can regain health through orbs dropped by defeated enemies or found in hidden areas. These orbs should vary in the amount of health they restore, potentially influenced by the player's health status or game difficulty.~~
 
-### 2. Wave End Upgrades
-At the end of each wave or level, players will have the opportunity to choose from a selection of upgrades. These upgrades can include increased health points (HP), enhanced speed, boosted stamina, and other attributes. This system allows for character progression and customization based on player preferences.
+### ~~2. Wave End Upgrades~~ Complete!
+~~At the end of each wave or level, players will have the opportunity to choose from a selection of upgrades. These upgrades can include increased health points (HP), enhanced speed, boosted stamina, and other attributes. This system allows for character progression and customization based on player preferences.~~
 
 ### 3. Projectile Upgrades
 Introduce a variety of projectile weapons and magical spells for players to use. These should range from traditional options like fireballs, arrows, and crossbows to more imaginative and fantasy-themed spells. Each projectile type can have unique attributes such as speed, damage, and special effects.
