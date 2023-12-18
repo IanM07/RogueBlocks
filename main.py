@@ -4,15 +4,17 @@ import json
 import socket
 import threading
 import random
+import importlib
 from cfg import *
+import cfg
 
 class Player:
     def __init__(self):
         self.image = pygame.Surface((50,50))
         self.image.fill(PURPLE)
         self.rect = self.image.get_rect()
+        self.base_speed = 3
         self.speed = 3  # Normal speed
-        self.base_speed = 3  # Normal speed
         self.sprint_speed = 6  # Sprinting speed
         self.base_sprint_speed = 6  # Sprinting speed
         self.is_sprinting = False
@@ -42,7 +44,7 @@ class Player:
             self.is_sprinting = True
         else:
             self.is_sprinting = False
-
+        
         current_speed = self.sprint_speed if self.is_sprinting else self.speed
         if keys[pygame.K_a]:
             self.x -= current_speed
@@ -62,7 +64,7 @@ class Player:
             self.shot_delay = self.base_shot_delay * 0.5  # Example: 50% of original delay
         elif powerup_type == "move_speed_boost":
             self.sprint_speed = self.base_sprint_speed * 1.5
-            self.speed = self.base_sprint_speed * 1.5
+            self.speed = self.base_speed * 1.5
         elif powerup_type == "health_orb":
             self.hp = self.hp + 0.3*self.max_hp
             if (self.hp > self.max_hp):
@@ -87,11 +89,14 @@ class Player:
 
     def apply_upgrade(self, upgrade_name):
         if upgrade_name == "Increased Movement Speed":
-            self.speed += self.base_speed * 0.1  # Increase speed by 10%
-            self.sprint_speed += self.base_sprint_speed * 0.1  # Increase sprint speed as well
+            self.base_speed += self.base_speed * 0.1  # Increase speed by 10%
+            self.base_sprint_speed += self.base_sprint_speed * 0.1  # Increase sprint speed as well
+            self.speed = self.base_speed
+            self.sprint_speed = self.base_sprint_speed
 
         elif upgrade_name == "Enhanced Fire Rate":
-            self.shot_delay *= 0.9  # Decrease delay by 10%
+            self.base_shot_delay *= 0.9  # Decrease delay by 10%
+            self.shot_delay = self.base_shot_delay
 
         elif upgrade_name == "Extended Health":
             self.max_hp += self.max_hp * 0.1  # Increase maximum health by 10%
@@ -113,7 +118,6 @@ class Player:
             self.stamina_recovery_rate += self.stamina_recovery_rate * 0.1  # Increase stamina recovery rate by 10%
 
     def update(self):
-        # Sprinting depletes stamina
         # Sprinting depletes stamina, but only if infinite stamina is not active
         if self.is_sprinting and not self.infinite_stamina:
             self.stamina -= self.stamina_use_rate
@@ -634,6 +638,9 @@ def pause_menu(screen):
         pygame.display.flip()
         
 def game_over(screen, current_wave, enemies_killed):
+    global enemies_per_wave
+    enemies_per_wave = 5
+    
     game_over_menu = Menu(screen)
     game_over_menu.add_button(Button("Main Menu", screen_width // 2 - 125, 300, 250, 50, action=back_to_main_menu))  # Add the button to the menu
 
@@ -741,13 +748,22 @@ def gameLoop():
     upgrade_selected = False
     clock = pygame.time.Clock()
     fps = 60
-    
+    last_health_regeneration_time = pygame.time.get_ticks()  # Initialize the last health regeneration time
+    health_regeneration_interval = 1000  # 1 second interval for health regeneration
+
     # Player initialization
     local_player = Player()
     enemies = [spawn_enemy(local_player.x, local_player.y) for _ in range(enemies_per_wave)]
     group_to_remove = None
 
     while running:
+        current_time = pygame.time.get_ticks()
+
+        # Health regeneration logic
+        if current_time - last_health_regeneration_time >= health_regeneration_interval:
+            local_player.hp = min(local_player.hp + local_player.hp_regeneration_rate, local_player.max_hp)
+            last_health_regeneration_time = current_time  # Reset the timer
+        
         # Event handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -813,6 +829,7 @@ def gameLoop():
         clock.tick(fps)
 
 def back_to_main_menu():
+    importlib.reload(cfg)
     main_menu(screen)
 
 def quit_game():
