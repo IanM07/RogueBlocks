@@ -22,8 +22,8 @@ Create diverse maps with varying layouts and themes. Each map should contain obs
 ### 6. Bosses and Enemy Variants
 Design a range of bosses and enemy variants, each with unique designs, behaviors, and attack patterns. Bosses should provide significant challenges and require specific strategies to defeat. Regular enemies should come in different variants, offering a mix of challenges to keep combat fresh and engaging.
 
-### 7. Powerups
-Implement a powerup system where players can gain temporary or permanent enhancements. These powerups should offer a range of effects, such as increased damage output, special abilities when hitting enemies, or unique healing properties. The design should ensure a balanced enhancement to gameplay without overpowering the player.
+### ~~7. Powerups~~ Complete!
+~~Implement a powerup system where players can gain temporary or permanent enhancements. These powerups should offer a range of effects, such as increased damage output, special abilities when hitting enemies, or unique healing properties. The design should ensure a balanced enhancement to gameplay without overpowering the player.~~
 
 ### 8. Prestige Currency
 At the end of each game run, players earn a prestige currency, which can be spent on permanent upgrades. These upgrades could include enhanced player abilities, new weapon unlocks, or passive bonuses. The currency should be balanced to reward progress and encourage replayability.
