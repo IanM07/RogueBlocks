@@ -39,21 +39,43 @@ class Player:
         keys = pygame.key.get_pressed()
         sprint_requested = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
 
-        # Update sprinting status based on stamina level and sprint request
         if sprint_requested and self.stamina > 0:
             self.is_sprinting = True
         else:
             self.is_sprinting = False
         
         current_speed = self.sprint_speed if self.is_sprinting else self.speed
+        new_x, new_y = self.x, self.y
+
+        # Proposed change: Move X and Y independently
         if keys[pygame.K_a]:
-            self.x -= current_speed
+            new_x -= current_speed
+            if self.can_move(new_x, self.y):
+                self.x = new_x
         if keys[pygame.K_d]:
-            self.x += current_speed
+            new_x += current_speed
+            if self.can_move(new_x, self.y):
+                self.x = new_x
+
+        new_x = self.x  # Reset new_x to updated x position
         if keys[pygame.K_w]:
-            self.y -= current_speed
+            new_y -= current_speed
+            if self.can_move(new_x, new_y):
+                self.y = new_y
         if keys[pygame.K_s]:
-            self.y += current_speed
+            new_y += current_speed
+            if self.can_move(new_x, new_y):
+                self.y = new_y
+
+    def can_move(self, new_x, new_y):
+        # Create a temporary rectangle for the new position
+        temp_rect = pygame.Rect(new_x, new_y, self.rect.width, self.rect.height)
+
+        # Check for collision with UI area and screen boundaries
+        ui_rect = pygame.Rect(0, 0, cfg.UI_WIDTH, cfg.SCREEN_HEIGHT)
+        screen_rect = pygame.Rect(0, 0, cfg.screen_width, cfg.screen_height)
+
+        return not temp_rect.colliderect(ui_rect) and screen_rect.contains(temp_rect)
 
     def activate_powerup(self, powerup_type):
         if powerup_type == "invincibility":
@@ -200,7 +222,9 @@ class Enemy:
 
 
     def draw(self, surface):
-        surface.blit(self.image, self.rect)
+        if self.x > cfg.UI_WIDTH:  # Only draw if outside the UI area
+            surface.blit(self.image, self.rect)
+
 
 class Projectile:
     next_id = 0  # Class variable to generate unique IDs
@@ -220,6 +244,10 @@ class Projectile:
         self.x += self.x_velocity
         self.y += self.y_velocity
         self.rect.x, self.rect.y = round(self.x), round(self.y)
+
+        # Deactivate if it collides with the UI area
+        if self.rect.colliderect(pygame.Rect(0, 0, cfg.UI_WIDTH, cfg.SCREEN_HEIGHT)):
+            self.is_active = False
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
@@ -341,11 +369,12 @@ def draw_bar(surface, value, max_value, x, y, width, height, bar_color, backgrou
     # Draw the current value
     pygame.draw.rect(surface, bar_color, (x, y, current_width, height))
 
-def draw_player_stats(screen, player):
+def draw_player_stats(screen, player, start_x, start_y):
     # Define the starting position
-    start_x = 870  # adjust as needed for your screen layout
-    start_y = 85
+    start_x = 6  # adjust as needed for your screen layout
+    start_y = 95
     line_height = 20  # space between lines
+    font = pygame.font.SysFont("Arial", 16)
 
     # Calculate shots per second (Hz) and round to 2 decimal places for readability
     if player.shot_delay > 0:  # Prevent division by zero
@@ -403,8 +432,8 @@ def initialize_upgrade_tiles(round_number):
 
     upgrade_tiles = []
     for i, (name, desc) in enumerate(selected_upgrades):
-        tile_x = 10  # Adjust as needed
-        tile_y = 50 + i * 110  # Adjust the vertical position based on the tile number
+        tile_x = 6  # Adjust as needed
+        tile_y = 240 + i * 110  # Adjust the vertical position based on the tile number
         tile_width = 300
         tile_height = 100
         upgrade_tiles.append(UpgradeTile(name, desc, tile_x, tile_y, tile_width, tile_height))
@@ -425,6 +454,14 @@ def draw_text(surface, text, font_size, x, y, color=(255, 255, 255), center_x=Fa
 def draw_game(screen, player, enemies, projectiles):
     screen.fill((0, 0, 0))  # Clear screen with black background
 
+    # Draw the UI area background
+    ui_background = pygame.Rect(0, 0, cfg.UI_WIDTH, cfg.SCREEN_HEIGHT)
+    pygame.draw.rect(screen, (128, 128, 128), ui_background)  # Grey background for UI
+
+    # Draw UI elements within the UI area
+    ui_offset_x = 20  # Horizontal offset for UI elements from the edge of the UI area
+    ui_offset_y = 20  # Vertical offset for UI elements from the top of the UI area
+    
     # Draw player and remote player (in multiplayer mode)
     player.draw(screen)
 
@@ -442,21 +479,21 @@ def draw_game(screen, player, enemies, projectiles):
             projectile.draw(screen)
 
     # Draw UI elements (HP bar, Stamina bar, etc.)
-    draw_bar(screen, player.hp, player.max_hp, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, RED, GRAY)
-    draw_bar(screen, player.stamina, player.max_stamina, BAR_X, BAR_Y + 40, BAR_WIDTH, BAR_HEIGHT, GREEN, GRAY)
-    draw_text(screen, f"Enemies Killed: {enemies_killed}", 55, 10, 10, WHITE)
-    draw_text(screen, f"Wave: {current_wave}", 55, screen_width // 2 - 75, 10, WHITE)
+    # Health bar
+    draw_bar(screen, player.hp, player.max_hp, 6, ui_offset_y, cfg.BAR_WIDTH, cfg.BAR_HEIGHT, cfg.RED, cfg.GRAY)
+    # Stamina bar
+    draw_bar(screen, player.stamina, player.max_stamina, 6, ui_offset_y + 40, cfg.BAR_WIDTH, cfg.BAR_HEIGHT, cfg.GREEN, cfg.GRAY)
+    draw_text(screen, f"Enemies Killed: {enemies_killed}", 55, 6, 860, WHITE)
+    draw_text(screen, f"Wave: {current_wave}", 55, 6, 820, WHITE)
 
     if in_intermission:
-        time_left = max(0, (intermission_timer - pygame.time.get_ticks()) // 1000)
-        draw_text(screen, f"Next Round Begins in: {time_left}s", 36, screen_width // 2, BAR_Y + BAR_HEIGHT + 10, WHITE, center_x=True)
+        draw_text(screen, f"Select an Upgrade to Begin Next Round", 36, 800, BAR_Y + BAR_HEIGHT + 10, WHITE)
         for tile_group in upgrade_tile_groups:
             for tile in tile_group:
                 tile.draw(screen)
                 
     # Updates player stats
-    draw_player_stats(screen, local_player)
-
+    draw_player_stats(screen, player, ui_offset_x, ui_offset_y + 80)  # Offset needs to be below the last bar
 
     pygame.display.flip()  # Update the full display Surface to the screen
 
