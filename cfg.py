@@ -1,11 +1,11 @@
 import pygame
 
 # Screen dimensions
-screen_width, screen_height = 1800, 900
+screen_width, screen_height = 1600, 900
 screen = pygame.display.set_mode((screen_width, screen_height))
 
 UI_WIDTH = 335
-SCREEN_WIDTH = 1200  
+SCREEN_WIDTH = 1800  
 SCREEN_HEIGHT = 900
 
 

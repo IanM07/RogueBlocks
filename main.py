@@ -261,7 +261,26 @@ class PowerUp:
         self.image = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
         pygame.draw.circle(self.image, self.color, (self.radius, self.radius), self.radius)
         self.rect = self.image.get_rect(center=(x, y))
+        self.x_velocity = random.uniform(-2.4, 2.4)
+        self.y_velocity = random.uniform(-2.4, 2.4)
 
+    def update(self):
+        # Update position
+        self.x += self.x_velocity
+        self.y += self.y_velocity
+
+        # Create a rectangle for collision detection
+        temp_rect = pygame.Rect(self.x, self.y, self.radius * 2, self.radius * 2)
+
+        # Check for collision with screen boundaries and UI
+        if temp_rect.left <= cfg.UI_WIDTH or temp_rect.right >= cfg.screen_width:
+            self.x_velocity *= -1  # Reverse horizontal direction
+        if temp_rect.top <= 0 or temp_rect.bottom >= cfg.screen_height:
+            self.y_velocity *= -1  # Reverse vertical direction
+
+        # Update the position of the rect
+        self.rect.x, self.rect.y = round(self.x), round(self.y)
+    
     def draw(self, surface):
         surface.blit(self.image, self.rect)
 
@@ -275,6 +294,23 @@ class Button:
         self.action = action
         self.action_args = action_args
         self.bg_color = bg_color
+
+    def update(self):
+        # Update position
+        self.x += self.x_velocity
+        self.y += self.y_velocity
+
+        # Create a rectangle for collision detection
+        temp_rect = pygame.Rect(self.x, self.y, self.radius * 2, self.radius * 2)
+
+        # Check for collision with screen boundaries and UI
+        if temp_rect.left <= cfg.UI_WIDTH or temp_rect.right >= cfg.screen_width:
+            self.x_velocity *= -1  # Reverse horizontal direction
+        if temp_rect.top <= 0 or temp_rect.bottom >= cfg.screen_height:
+            self.y_velocity *= -1  # Reverse vertical direction
+
+        # Update the position of the rect
+        self.rect.x, self.rect.y = round(self.x), round(self.y)
 
     def draw(self, screen):
         # Draw the button rectangle with the specified background color
@@ -335,7 +371,6 @@ class UpgradeTile:
 
     def select_upgrade(self):
         global local_player
-        print(f"Upgrading to: {self.upgrade_name}")  # Debug print
         local_player.apply_upgrade(self.upgrade_name)
 
 
@@ -483,7 +518,7 @@ def draw_game(screen, player, enemies, projectiles):
     draw_bar(screen, player.hp, player.max_hp, 6, ui_offset_y, cfg.BAR_WIDTH, cfg.BAR_HEIGHT, cfg.RED, cfg.GRAY)
     # Stamina bar
     draw_bar(screen, player.stamina, player.max_stamina, 6, ui_offset_y + 40, cfg.BAR_WIDTH, cfg.BAR_HEIGHT, cfg.GREEN, cfg.GRAY)
-    draw_text(screen, f"Enemies Killed: {enemies_killed}", 55, 6, 860, WHITE)
+    draw_text(screen, f"Enemies Killed: {enemies_killed}", 45, 6, 860, WHITE)
     draw_text(screen, f"Wave: {current_wave}", 55, 6, 820, WHITE)
 
     if in_intermission:
@@ -508,7 +543,7 @@ def update_enemies(enemies, received_enemies_data):
             # Update any other necessary attributes, like health, state, etc.
             # Example: enemy.hp = enemy_data['hp']
 
-def update_game_state(local_player, enemies, projectiles):
+def update_game_state(local_player, enemies, projectiles, powerups):
     global enemies_killed
 
     # Update local player
@@ -547,6 +582,10 @@ def update_game_state(local_player, enemies, projectiles):
             for p_type in powerup.types:
                 local_player.activate_powerup(p_type)
             powerups.remove(powerup)
+
+    for powerup in powerups:
+        powerup.update()
+
 
     # Check for collisions between enemies and players
     for enemy in enemies[:]:
@@ -771,7 +810,7 @@ def update_projectiles(projectiles, received_projectiles):
             projectiles.append(new_projectile)
 
 def gameLoop():
-    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected
+    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected, powerups
 
     # Initialization
     running = True
@@ -846,7 +885,7 @@ def gameLoop():
         handle_enemy_collisions(enemies)
 
         # Update game state
-        update_game_state(local_player, enemies, projectiles)
+        update_game_state(local_player, enemies, projectiles, powerups)
 
         # Manage game waves
         manage_waves(enemies, local_player)
