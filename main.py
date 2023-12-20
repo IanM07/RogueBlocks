@@ -34,6 +34,9 @@ class Player:
         self.invincible = False
         self.infinite_stamina = False
         self.powerup_timers = {}
+        self.inventory = []  # Initialize the inventory
+        self.powerup_use_cooldown = 500  # 500 milliseconds cooldown
+        self.last_powerup_use_time = 0
 
     def handle_keys(self, keys):
         keys = pygame.key.get_pressed()
@@ -67,6 +70,14 @@ class Player:
             if self.can_move(new_x, new_y):
                 self.y = new_y
 
+        # Handle inventory key presses
+        if keys[pygame.K_1]:
+            self.use_powerup(0)  # Use the powerup in the first slot
+        if keys[pygame.K_2]:
+            self.use_powerup(1)  # Use the powerup in the second slot
+        if keys[pygame.K_3]:
+            self.use_powerup(2)  # Use the powerup in the third slot
+
     def can_move(self, new_x, new_y):
         # Create a temporary rectangle for the new position
         temp_rect = pygame.Rect(new_x, new_y, self.rect.width, self.rect.height)
@@ -77,23 +88,32 @@ class Player:
 
         return not temp_rect.colliderect(ui_rect) and screen_rect.contains(temp_rect)
 
-    def activate_powerup(self, powerup_type):
-        if powerup_type == "invincibility":
-            self.invincible = True
-        elif powerup_type == "infinite_stamina":
-            self.infinite_stamina = True
-        elif powerup_type == "shoot_speed_boost":
-            self.shot_delay = self.base_shot_delay * 0.5  # Example: 50% of original delay
-        elif powerup_type == "move_speed_boost":
-            self.sprint_speed = self.base_sprint_speed * 1.5
-            self.speed = self.base_speed * 1.5
-        elif powerup_type == "health_orb":
-            self.hp = self.hp + 0.3*self.max_hp
-            if (self.hp > self.max_hp):
-                self.hp = self.max_hp
+    def add_to_inventory(self, powerup_info):
+        if len(self.inventory) < 3:  # Maximum of 3 items in inventory
+            self.inventory.append(powerup_info)
 
-        # Set timer for power-up duration (e.g., 10 seconds)
-        self.powerup_timers[powerup_type] = pygame.time.get_ticks() + 7000
+    def use_powerup(self, slot_index):
+        current_time = pygame.time.get_ticks()
+        if 0 <= slot_index < len(self.inventory) and current_time - self.last_powerup_use_time > self.powerup_use_cooldown:
+            self.activate_powerup(self.inventory.pop(slot_index))  # Remove the used powerup
+            self.last_powerup_use_time = current_time
+
+    def activate_powerup(self, powerup_info):
+        for powerup_type in powerup_info["types"]:
+            if powerup_type == "invincibility":
+                self.invincible = True
+            elif powerup_type == "infinite_stamina":
+                self.infinite_stamina = True
+            elif powerup_type == "shoot_speed_boost":
+                self.shot_delay = self.base_shot_delay * 0.5  # Example: 50% of original delay
+            elif powerup_type == "move_speed_boost":
+                self.sprint_speed = self.base_sprint_speed * 1.5
+                self.speed = self.base_speed * 1.5
+            elif powerup_type == "health_orb":
+                self.hp = min(self.hp + 0.3 * self.max_hp, self.max_hp)  # Increase HP but not above max
+
+            # Set timer for each power-up duration (e.g., 10 seconds)
+            self.powerup_timers[powerup_type] = pygame.time.get_ticks() + 7000
 
     def deactivate_powerup(self, powerup_type):
         if powerup_type in self.powerup_timers:
@@ -313,12 +333,18 @@ class Button:
         self.rect.x, self.rect.y = round(self.x), round(self.y)
 
     def draw(self, screen):
-        # Draw the button rectangle with the specified background color
-        pygame.draw.rect(screen, self.bg_color, (self.x, self.y, self.width, self.height))
-        
+        # Set the colors
+        button_color = (50, 50, 50)  # Dark gray background
+        text_color = (255, 255, 255)  # White text
+        border_color = (255, 255, 255)  # White border
+
+        # Draw the button background with border
+        pygame.draw.rect(screen, border_color, (self.x, self.y, self.width, self.height))
+        pygame.draw.rect(screen, button_color, (self.x + 2, self.y + 2, self.width - 4, self.height - 4))
+
         # Draw the text on the button
         font = pygame.font.SysFont("Arial", 20)
-        text_surf = font.render(self.text, True, BLACK)  # White text
+        text_surf = font.render(self.text, True, text_color)
         text_rect = text_surf.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
         screen.blit(text_surf, text_rect)
 
@@ -396,17 +422,30 @@ class Menu:
 
 def draw_bar(surface, value, max_value, x, y, width, height, bar_color, background_color):
     # Draw the background of the bar (empty part)
-    pygame.draw.rect(surface, background_color, (x, y, width, height))
+    pygame.draw.rect(surface, (255, 255, 255), (x, y, width, height))  # White border
+    pygame.draw.rect(surface, background_color, (x + 2, y + 2, width - 4, height - 4))
 
     # Calculate the width of the bar (current value)
     current_width = (value / max_value) * width
 
     # Draw the current value
-    pygame.draw.rect(surface, bar_color, (x, y, current_width, height))
+    pygame.draw.rect(surface, bar_color, (x + 2, y + 2, current_width - 4, height - 4))
 
 def draw_player_stats(screen, player, start_x, start_y):
+
+    stats_box_x = 6  # Adjust as needed
+    stats_box_y = 95  # Adjust as needed
+    stats_box_width = 200  # Adjust as needed
+    stats_box_height = 142  # Adjust as needed
+    box_color = (50, 50, 50)  # Dark gray
+    border_color = (255, 255, 255)  # White
+
+    # Draw the stats box background with border
+    pygame.draw.rect(screen, border_color, (stats_box_x, stats_box_y, stats_box_width, stats_box_height))
+    pygame.draw.rect(screen, box_color, (stats_box_x + 2, stats_box_y + 2, stats_box_width - 4, stats_box_height - 4))
+
     # Define the starting position
-    start_x = 6  # adjust as needed for your screen layout
+    start_x = 9  # adjust as needed for your screen layout
     start_y = 95
     line_height = 20  # space between lines
     font = pygame.font.SysFont("Arial", 16)
@@ -486,6 +525,37 @@ def draw_text(surface, text, font_size, x, y, color=(255, 255, 255), center_x=Fa
     text_rect.y = y
     surface.blit(text_surface, text_rect)
 
+def draw_wave_and_kill_count(screen, current_wave, enemies_killed):
+    # Set the position and dimensions of the box
+    box_x = 6
+    box_y = 845  # For example, 60 pixels above the bottom
+    box_width = 200
+    box_height = 50
+
+    # Set the colors
+    box_color = (50, 50, 50)  # Dark gray
+    border_color = (255, 255, 255)  # White
+    text_color = (255, 255, 255)  # White
+
+    # Draw the box with a border
+    pygame.draw.rect(screen, border_color, (box_x, box_y, box_width, box_height))
+    pygame.draw.rect(screen, box_color, (box_x + 2, box_y + 2, box_width - 4, box_height - 4))
+
+    # Prepare the text
+    font = pygame.font.SysFont("Arial", 20)
+    wave_text = f"Wave: {current_wave}"
+    kill_count_text = f"Enemies Killed: {enemies_killed}"
+
+    # Render the wave text
+    wave_surf = font.render(wave_text, True, text_color)
+    wave_rect = wave_surf.get_rect(center=(box_x + 32, box_y + 13))
+    screen.blit(wave_surf, wave_rect)
+
+    # Render the kill count text
+    kill_count_surf = font.render(kill_count_text, True, text_color)
+    kill_count_rect = kill_count_surf.get_rect(center=(box_x + 68, box_y + 33))
+    screen.blit(kill_count_surf, kill_count_rect)
+
 def draw_game(screen, player, enemies, projectiles):
     screen.fill((0, 0, 0))  # Clear screen with black background
 
@@ -518,8 +588,7 @@ def draw_game(screen, player, enemies, projectiles):
     draw_bar(screen, player.hp, player.max_hp, 6, ui_offset_y, cfg.BAR_WIDTH, cfg.BAR_HEIGHT, cfg.RED, cfg.GRAY)
     # Stamina bar
     draw_bar(screen, player.stamina, player.max_stamina, 6, ui_offset_y + 40, cfg.BAR_WIDTH, cfg.BAR_HEIGHT, cfg.GREEN, cfg.GRAY)
-    draw_text(screen, f"Enemies Killed: {enemies_killed}", 45, 6, 860, WHITE)
-    draw_text(screen, f"Wave: {current_wave}", 55, 6, 820, WHITE)
+    draw_wave_and_kill_count(screen, current_wave, enemies_killed)
 
     if in_intermission:
         draw_text(screen, f"Select an Upgrade to Begin Next Round", 36, 800, BAR_Y + BAR_HEIGHT + 10, WHITE)
@@ -529,6 +598,9 @@ def draw_game(screen, player, enemies, projectiles):
                 
     # Updates player stats
     draw_player_stats(screen, player, ui_offset_x, ui_offset_y + 80)  # Offset needs to be below the last bar
+
+    # Draw the UI for inventory
+    draw_inventory(screen, player)
 
     pygame.display.flip()  # Update the full display Surface to the screen
 
@@ -542,6 +614,26 @@ def update_enemies(enemies, received_enemies_data):
             enemy.y = enemy_data['y']
             # Update any other necessary attributes, like health, state, etc.
             # Example: enemy.hp = enemy_data['hp']
+
+def draw_inventory(screen, player):
+    inventory_x = 213  # Adjust as needed
+    inventory_y = 19  # Adjust as needed
+    slot_width = 50
+    slot_height = 50
+    slot_margin = 10
+    slot_color = (50, 50, 50)  # Dark gray
+    border_color = (255, 255, 255)  # White
+
+    for i in range(3):  # Draw three slots regardless of whether they are occupied
+        # Draw the slot background with border
+        pygame.draw.rect(screen, border_color, (inventory_x, inventory_y + i * (slot_height + slot_margin), slot_width, slot_height))
+        pygame.draw.rect(screen, slot_color, (inventory_x + 2, inventory_y + 2 + i * (slot_height + slot_margin), slot_width - 4, slot_height - 4))
+
+        # If the slot has a powerup, draw it
+        if i < len(player.inventory):
+            powerup_info = player.inventory[i]
+            powerup_color = powerup_info["color"]  # Access the color from the dictionary
+            pygame.draw.circle(screen, powerup_color, (inventory_x + slot_width // 2, inventory_y + slot_height // 2 + i * (slot_height + slot_margin)), 20)
 
 def update_game_state(local_player, enemies, projectiles, powerups):
     global enemies_killed
@@ -579,9 +671,13 @@ def update_game_state(local_player, enemies, projectiles, powerups):
     # Check for collisions between player and power-ups
     for powerup in powerups[:]:
         if float_based_collision(powerup, local_player):
-            for p_type in powerup.types:
-                local_player.activate_powerup(p_type)
-            powerups.remove(powerup)
+            if len(local_player.inventory) < 3:  # Check if there's space in the inventory
+                powerup_info = {
+                    "types": powerup.types,
+                    "color": powerup.color  # Store the combined color
+                }
+                local_player.add_to_inventory(powerup_info)
+                powerups.remove(powerup)
 
     for powerup in powerups:
         powerup.update()
@@ -633,7 +729,7 @@ def manage_waves(enemies, player):
         upgrade_tile_groups.append(initialize_upgrade_tiles(current_wave))
         upgrade_selected = False  # Reset the flag at the start of intermission
 
-    if in_intermission and current_time >= intermission_timer and upgrade_selected:
+    if upgrade_selected:
         in_intermission = False
         upgrade_selected = False  # Reset the flag after the intermission ends
         current_wave += 1
