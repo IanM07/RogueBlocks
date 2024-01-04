@@ -37,6 +37,10 @@ class Player:
         self.inventory = []  # Initialize the inventory
         self.powerup_use_cooldown = 500  # 500 milliseconds cooldown
         self.last_powerup_use_time = 0
+        self.is_knocked_back = False
+        self.knockback_velocity_x = 0
+        self.knockback_velocity_y = 0
+        self.knockback_end_time = 0
 
     def handle_keys(self, keys):
         keys = pygame.key.get_pressed()
@@ -160,21 +164,53 @@ class Player:
             self.stamina_recovery_rate += self.stamina_recovery_rate * 0.1  # Increase stamina recovery rate by 10%
 
     def update(self):
-        # Sprinting depletes stamina, but only if infinite stamina is not active
-        if self.is_sprinting and not self.infinite_stamina:
-            self.stamina -= self.stamina_use_rate
-            self.stamina = max(self.stamina, 0)
-
-        # Regenerate stamina only when not sprinting and shift key is released
-        keys = pygame.key.get_pressed()
-        if not self.is_sprinting and not (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]):
-            self.stamina += self.stamina_recovery_rate
-            self.stamina = min(self.stamina, self.max_stamina)
-
         current_time = pygame.time.get_ticks()
-        for powerup_type in list(self.powerup_timers.keys()):
-            if current_time > self.powerup_timers[powerup_type]:
-                self.deactivate_powerup(powerup_type)
+        if self.is_knocked_back:
+            if current_time < self.knockback_end_time:
+                # Move X and Y with bounds checking
+                new_x = self.x + self.knockback_velocity_x
+                new_y = self.y + self.knockback_velocity_y
+
+                # Bounds checking for left and right boundaries
+                if new_x < cfg.UI_WIDTH or new_x > cfg.screen_width - self.rect.width:
+                    self.knockback_velocity_x *= -1  # Reverse horizontal direction
+
+                # Bounds checking for top and bottom boundaries
+                if new_y < 0 or new_y > cfg.screen_height - self.rect.height:
+                    self.knockback_velocity_y *= -1  # Reverse vertical direction
+
+                # Update position with new values
+                self.x = new_x
+                self.y = new_y
+
+                self.rect.x, self.rect.y = round(self.x), round(self.y)
+            else:
+                # Reset knockback state
+                self.is_knocked_back = False
+        else:
+        
+            # Sprinting depletes stamina, but only if infinite stamina is not active
+            if self.is_sprinting and not self.infinite_stamina:
+                self.stamina -= self.stamina_use_rate
+                self.stamina = max(self.stamina, 0)
+
+            # Regenerate stamina only when not sprinting and shift key is released
+            keys = pygame.key.get_pressed()
+            if not self.is_sprinting and not (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]):
+                self.stamina += self.stamina_recovery_rate
+                self.stamina = min(self.stamina, self.max_stamina)
+
+            current_time = pygame.time.get_ticks()
+            for powerup_type in list(self.powerup_timers.keys()):
+                if current_time > self.powerup_timers[powerup_type]:
+                    self.deactivate_powerup(powerup_type)
+                    
+    def knockback(self, velocity_x, velocity_y, duration):
+        self.is_knocked_back = True
+        self.knockback_velocity_x = velocity_x
+        self.knockback_velocity_y = velocity_y
+        self.knockback_end_time = pygame.time.get_ticks() + duration
+
 
     def take_damage(self):
         current_time = pygame.time.get_ticks()
@@ -244,7 +280,66 @@ class Enemy:
     def draw(self, surface):
         if self.x > cfg.UI_WIDTH:  # Only draw if outside the UI area
             surface.blit(self.image, self.rect)
+            
+class Boss:
+    def __init__(self, x, y, boss_type, health):
+        self.x, self.y = x, y
+        self.boss_type = boss_type
+        self.hp = health
+        self.image = pygame.Surface((80, 80))
+        self.image.fill((200, 0, 0))
+        self.rect = self.image.get_rect(topleft=(self.x, self.y))
+        self.speed = 2
 
+        if self.boss_type == 'dasher':
+            self.dash_speed = 12  # Speed of the dash
+            self.dash_count = 0
+            self.max_dashes = 3
+            self.dash_duration = 400  # Duration of each dash
+            self.dash_cooldown = 250  # Delay between individual dashes
+            self.burst_cooldown = 1000  # Delay between dash bursts
+            self.last_dash_time = 0
+            self.next_dash_time = 0
+            self.dashing = False
+            self.dash_target = None
+
+    def update(self, player):
+        current_time = pygame.time.get_ticks()
+        if self.boss_type == 'dasher':
+            if not self.dashing and current_time >= self.next_dash_time:
+                self.start_dash(player)
+
+            if self.dashing:
+                if current_time - self.last_dash_time > self.dash_duration:
+                    self.end_dash()
+                    if self.dash_count < self.max_dashes:
+                        self.next_dash_time = current_time + self.dash_cooldown
+                    else:
+                        self.next_dash_time = current_time + self.burst_cooldown
+                        self.dash_count = 0  # Reset dash count after burst cooldown
+
+                else:
+                    self.continue_dash()
+
+    def start_dash(self, player):
+        self.dashing = True
+        self.dash_target = (player.x, player.y)
+        self.last_dash_time = pygame.time.get_ticks()
+        self.dash_count += 1
+
+    def continue_dash(self):
+        if self.dash_target:
+            target_dx, target_dy = self.dash_target[0] - self.x, self.dash_target[1] - self.y
+            distance = max((target_dx**2 + target_dy**2)**0.5, 1)
+            self.x += (target_dx / distance) * self.dash_speed
+            self.y += (target_dy / distance) * self.dash_speed
+            self.rect.x, self.rect.y = round(self.x), round(self.y)
+
+    def end_dash(self):
+        self.dashing = False
+
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
 
 class Projectile:
     next_id = 0  # Class variable to generate unique IDs
@@ -556,7 +651,7 @@ def draw_wave_and_kill_count(screen, current_wave, enemies_killed):
     kill_count_rect = kill_count_surf.get_rect(center=(box_x + 68, box_y + 33))
     screen.blit(kill_count_surf, kill_count_rect)
 
-def draw_game(screen, player, enemies, projectiles):
+def draw_game(screen, player, enemies, projectiles, bosses):
     screen.fill((0, 0, 0))  # Clear screen with black background
 
     # Draw the UI area background
@@ -577,6 +672,9 @@ def draw_game(screen, player, enemies, projectiles):
     # Draw power-ups
     for powerup in powerups:
         powerup.draw(screen)
+
+    for boss in bosses:
+        boss.draw(screen)
 
     # Draw projectiles
     for projectile in projectiles:
@@ -636,7 +734,7 @@ def draw_inventory(screen, player):
             pygame.draw.circle(screen, powerup_color, (inventory_x + slot_width // 2, inventory_y + slot_height // 2 + i * (slot_height + slot_margin)), 20)
 
 def update_game_state(local_player, enemies, projectiles, powerups):
-    global enemies_killed
+    global enemies_killed, bosses
 
     # Update local player
     local_player.update()
@@ -645,6 +743,34 @@ def update_game_state(local_player, enemies, projectiles, powerups):
     for enemy in enemies:
         # The enemy should move towards the nearest player
         enemy.move_towards_player(local_player)
+
+    for boss in bosses:
+        boss.update(local_player)
+
+        # Check for collisions with the player
+        if float_based_collision(local_player, boss) and not local_player.is_knocked_back:
+            # Calculate knockback direction based on relative position
+            dx = local_player.x - boss.x
+            dy = local_player.y - boss.y
+            distance = max((dx**2 + dy**2)**0.5, 1)
+            knockback_velocity_x = 15 * (dx / distance)  # Adjust magnitude as needed
+            knockback_velocity_y = 15 * (dy / distance)  # Adjust magnitude as needed
+            knockback_duration = 1500  # 1.5 seconds
+
+            local_player.knockback(knockback_velocity_x, knockback_velocity_y, knockback_duration)
+            local_player.take_damage()
+        
+        # Check for collisions with projectiles
+        for projectile in projectiles:
+            if projectile.is_active and float_based_collision(projectile, boss):
+                # Handle collision with projectile
+                boss.hp -= 1  # Example
+                projectile.is_active = False
+
+                if boss.hp <= 0:
+                    bosses.remove(boss)
+                    # Handle boss defeat, e.g., dropping items
+                    break
 
     # Update projectiles
     for projectile in projectiles[:]:
@@ -719,24 +845,32 @@ def projectile_out_of_bounds(projectile):
             projectile.y < 0 or projectile.y > screen_height)
 
 def manage_waves(enemies, player):
-    global in_intermission, intermission_timer, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected
+    global in_intermission, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected, boss_spawned, bosses
 
-    current_time = pygame.time.get_ticks()
-
-    if len(enemies) == 0 and not in_intermission:
+    if len(enemies) == 0 and len(bosses) == 0 and not in_intermission:
         in_intermission = True
-        intermission_timer = current_time + 5000  # 5 seconds
         upgrade_tile_groups.append(initialize_upgrade_tiles(current_wave))
         upgrade_selected = False  # Reset the flag at the start of intermission
 
-    if upgrade_selected:
+    if in_intermission and upgrade_selected:
         in_intermission = False
-        upgrade_selected = False  # Reset the flag after the intermission ends
         current_wave += 1
         enemies_per_wave += wave_increase_factor
         enemies.clear()
-        enemies.extend([spawn_enemy(player.x, player.y) for _ in range(enemies_per_wave)])
+        bosses.clear()  # Clear any remaining bosses
+
+        if current_wave % 4 == 0:
+            # It's a boss round
+            boss_x = screen_width // 2
+            boss_y = -80  # Spawn above the screen
+            boss = Boss(boss_x, boss_y, "dasher", current_wave*2)  # Spawn a dasher boss
+            bosses.append(boss)
+        else:
+            # Spawn regular enemies
+            enemies.extend([spawn_enemy(player.x, player.y) for _ in range(enemies_per_wave)])
+
         upgrade_tile_groups.clear()  # Clear the upgrades after selection
+        upgrade_selected = False  # Reset the flag after the intermission ends
 
 def main_menu(screen):
     global is_multiplayer
@@ -810,8 +944,9 @@ def pause_menu(screen):
         pygame.display.flip()
         
 def game_over(screen, current_wave, enemies_killed):
-    global enemies_per_wave
+    global enemies_per_wave, bosses
     enemies_per_wave = 5
+    bosses = []
     
     game_over_menu = Menu(screen)
     game_over_menu.add_button(Button("Main Menu", screen_width // 2 - 125, 300, 250, 50, action=back_to_main_menu))  # Add the button to the menu
@@ -906,7 +1041,7 @@ def update_projectiles(projectiles, received_projectiles):
             projectiles.append(new_projectile)
 
 def gameLoop():
-    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected, powerups
+    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected, powerups, bosses
 
     # Initialization
     running = True
@@ -987,7 +1122,7 @@ def gameLoop():
         manage_waves(enemies, local_player)
         
         # Drawing
-        draw_game(screen, local_player, enemies, projectiles)
+        draw_game(screen, local_player, enemies, projectiles, bosses)
 
         # Check for game over
         if local_player.hp <= 0:
@@ -1018,7 +1153,7 @@ def reset_game():
     current_wave = 1
 
 def main():
-    global enemies, player
+    global enemies, player, bosses
     #Initialize pygame
     pygame.init()
     #Set up game loop
@@ -1029,3 +1164,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

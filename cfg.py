@@ -33,6 +33,7 @@ number_of_enemies = 10
 projectiles = []
 powerups = []
 upgrade_tile_groups = []
+bosses = []
 enemies_per_wave = 5
 wave_increase_factor = 3
 upgrade_selected = False
