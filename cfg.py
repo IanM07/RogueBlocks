@@ -4,13 +4,13 @@ import pygame
 screen_width, screen_height = 1600, 900
 screen = pygame.display.set_mode((screen_width, screen_height))
 
-UI_WIDTH = 335
+UI_WIDTH = 325
 SCREEN_WIDTH = 1800  
 SCREEN_HEIGHT = 900
 
 
 # HP and Stamina Bar Constants
-BAR_WIDTH = 200
+BAR_WIDTH = 225
 BAR_HEIGHT = 30
 BAR_X = screen_width - BAR_WIDTH - 10
 BAR_Y = 10

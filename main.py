@@ -1,8 +1,6 @@
 import pygame
 import sys
 import json
-import socket
-import threading
 import random
 import importlib
 from cfg import *
@@ -292,7 +290,7 @@ class Boss:
         self.speed = 2
 
         if self.boss_type == 'dasher':
-            self.dash_speed = 12  # Speed of the dash
+            self.dash_speed = 20  # Speed of the dash
             self.dash_count = 0
             self.max_dashes = 3
             self.dash_duration = 400  # Duration of each dash
@@ -378,6 +376,8 @@ class PowerUp:
         self.rect = self.image.get_rect(center=(x, y))
         self.x_velocity = random.uniform(-2.4, 2.4)
         self.y_velocity = random.uniform(-2.4, 2.4)
+        self.fading = False
+        self.alpha = 255  # Fully opaque initially
 
     def update(self):
         # Update position
@@ -395,8 +395,14 @@ class PowerUp:
 
         # Update the position of the rect
         self.rect.x, self.rect.y = round(self.x), round(self.y)
+
+        if self.fading:
+            self.alpha -= 5  # Reduce alpha to create a fading effect
+            self.alpha = max(self.alpha, 0)  # Ensure alpha doesn't go below 0
     
     def draw(self, surface):
+        if self.alpha < 255:
+            self.image.set_alpha(self.alpha)  # Set current alpha
         surface.blit(self.image, self.rect)
 
 class Button:
@@ -491,9 +497,12 @@ class UpgradeTile:
         self.button.draw(screen)
 
     def select_upgrade(self):
-        global local_player
+        global local_player, powerups
         local_player.apply_upgrade(self.upgrade_name)
 
+        # Trigger fading for all powerups
+        for powerup in powerups:
+            powerup.fading = True
 
 class Menu:
     def __init__(self, screen):
@@ -530,8 +539,8 @@ def draw_player_stats(screen, player, start_x, start_y):
 
     stats_box_x = 6  # Adjust as needed
     stats_box_y = 95  # Adjust as needed
-    stats_box_width = 200  # Adjust as needed
-    stats_box_height = 142  # Adjust as needed
+    stats_box_width = 225  # Adjust as needed
+    stats_box_height = 152  # Adjust as needed
     box_color = (50, 50, 50)  # Dark gray
     border_color = (255, 255, 255)  # White
 
@@ -553,13 +562,13 @@ def draw_player_stats(screen, player, start_x, start_y):
 
     # Define stats to display
     stats = [
-        f"Health: {player.hp}/{player.max_hp}",
-        f"Health Regeneration: {player.hp_regeneration_rate}/s",
-        f"Stamina: {player.stamina}/{player.max_stamina}",
-        f"Stamina Regeneration: {player.stamina_recovery_rate}/s",
-        f"Movement Speed: {player.speed} pixels/s",
-        f"Fire Rate: {shots_per_second} shots/s",
-        f"Damage Reduction: {player.damage_reduction}/hit",
+        f"Health: {player.hp:.2f}/{player.max_hp:.2f}",
+        f"Health Regeneration: {player.hp_regeneration_rate:.2f}/s",  # Rounded to two decimal places
+        f"Stamina: {player.stamina:.2f}/{player.max_stamina:.2f}",
+        f"Stamina Regeneration: {player.stamina_recovery_rate:.2f}/s",  # Rounded to two decimal places
+        f"Movement Speed: {player.speed:.2f} pixels/s",  # Rounded to two decimal places
+        f"Fire Rate: {shots_per_second:.2f} shots/s",
+        f"Damage Reduction: {player.damage_reduction:.2f}/hit",  # Rounded to two decimal places
     ]
 
     # Set the font for the stats
@@ -602,8 +611,8 @@ def initialize_upgrade_tiles(round_number):
     upgrade_tiles = []
     for i, (name, desc) in enumerate(selected_upgrades):
         tile_x = 6  # Adjust as needed
-        tile_y = 240 + i * 110  # Adjust the vertical position based on the tile number
-        tile_width = 300
+        tile_y = 255 + i * 110  # Adjust the vertical position based on the tile number
+        tile_width = 301
         tile_height = 100
         upgrade_tiles.append(UpgradeTile(name, desc, tile_x, tile_y, tile_width, tile_height))
 
@@ -623,7 +632,7 @@ def draw_text(surface, text, font_size, x, y, color=(255, 255, 255), center_x=Fa
 def draw_wave_and_kill_count(screen, current_wave, enemies_killed):
     # Set the position and dimensions of the box
     box_x = 6
-    box_y = 845  # For example, 60 pixels above the bottom
+    box_y = 845  # Adjust as needed
     box_width = 200
     box_height = 50
 
@@ -633,22 +642,24 @@ def draw_wave_and_kill_count(screen, current_wave, enemies_killed):
     text_color = (255, 255, 255)  # White
 
     # Draw the box with a border
-    pygame.draw.rect(screen, border_color, (box_x, box_y, box_width, box_height))
-    pygame.draw.rect(screen, box_color, (box_x + 2, box_y + 2, box_width - 4, box_height - 4))
+    pygame.draw.rect(screen, border_color, (box_x, box_y, 301, box_height))
+    pygame.draw.rect(screen, box_color, (box_x + 2, box_y + 2, 301 - 4, box_height - 4))
 
     # Prepare the text
     font = pygame.font.SysFont("Arial", 20)
     wave_text = f"Wave: {current_wave}"
     kill_count_text = f"Enemies Killed: {enemies_killed}"
 
-    # Render the wave text
+    # Render and position the wave text
     wave_surf = font.render(wave_text, True, text_color)
-    wave_rect = wave_surf.get_rect(center=(box_x + 32, box_y + 13))
+    wave_rect = wave_surf.get_rect()
+    wave_rect.topleft = (box_x + 3, box_y + 5)  # Fixed left position
     screen.blit(wave_surf, wave_rect)
 
-    # Render the kill count text
+    # Render and position the kill count text
     kill_count_surf = font.render(kill_count_text, True, text_color)
-    kill_count_rect = kill_count_surf.get_rect(center=(box_x + 68, box_y + 33))
+    kill_count_rect = kill_count_surf.get_rect()
+    kill_count_rect.topleft = (box_x + 3, box_y + 25)  # Fixed left position, below wave text
     screen.blit(kill_count_surf, kill_count_rect)
 
 def draw_game(screen, player, enemies, projectiles, bosses):
@@ -714,10 +725,10 @@ def update_enemies(enemies, received_enemies_data):
             # Example: enemy.hp = enemy_data['hp']
 
 def draw_inventory(screen, player):
-    inventory_x = 213  # Adjust as needed
+    inventory_x = 239  # Adjust as needed
     inventory_y = 19  # Adjust as needed
-    slot_width = 50
-    slot_height = 50
+    slot_width = 69
+    slot_height = 69
     slot_margin = 10
     slot_color = (50, 50, 50)  # Dark gray
     border_color = (255, 255, 255)  # White
@@ -731,7 +742,7 @@ def draw_inventory(screen, player):
         if i < len(player.inventory):
             powerup_info = player.inventory[i]
             powerup_color = powerup_info["color"]  # Access the color from the dictionary
-            pygame.draw.circle(screen, powerup_color, (inventory_x + slot_width // 2, inventory_y + slot_height // 2 + i * (slot_height + slot_margin)), 20)
+            pygame.draw.circle(screen, powerup_color, (inventory_x + slot_width // 2, inventory_y + slot_height // 2 + i * (slot_height + slot_margin)), 26.4)
 
 def update_game_state(local_player, enemies, projectiles, powerups):
     global enemies_killed, bosses
@@ -809,6 +820,8 @@ def update_game_state(local_player, enemies, projectiles, powerups):
         powerup.update()
 
 
+    powerups[:] = [powerup for powerup in powerups if powerup.alpha > 0]
+        
     # Check for collisions between enemies and players
     for enemy in enemies[:]:
         if float_based_collision(enemy, local_player):
@@ -854,6 +867,7 @@ def manage_waves(enemies, player):
 
     if in_intermission and upgrade_selected:
         in_intermission = False
+        
         current_wave += 1
         enemies_per_wave += wave_increase_factor
         enemies.clear()
@@ -1020,8 +1034,8 @@ def spawn_enemy(player_x, player_y):
     elif side == 2:  # Bottom
         x = random.randint(0, screen_width)
         y = screen_height + 40  # Slightly below the bottom edge
-    else:  # Left
-        x = -40  # Slightly to the left of the left edge
+    else:  # Left, adjust to spawn to the left of the UI but still on screen
+        x = cfg.UI_WIDTH - 40  # Spawning just to the left of UI, 40 is the enemy width
         y = random.randint(0, screen_height)
 
     return Enemy(x, y)
@@ -1081,6 +1095,7 @@ def gameLoop():
                     running = False
                 elif action == "resume":
                     continue
+                
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_button_down = True
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
