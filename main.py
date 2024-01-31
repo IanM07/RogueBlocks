@@ -3,6 +3,7 @@ import sys
 import json
 import random
 import importlib
+import time
 from cfg import *
 import cfg
 
@@ -407,33 +408,81 @@ class PowerUp:
 
 class Button:
     def __init__(self, text, x, y, width, height, action=None, action_args=[], bg_color=(255, 255, 255)):
+        # Existing attributes
         self.text = text
         self.x = x
         self.y = y
         self.width = width
         self.height = height
+        self.base_width = width
+        self.base_height = height
         self.action = action
         self.action_args = action_args
         self.bg_color = bg_color
 
-    def update(self):
-        # Update position
-        self.x += self.x_velocity
-        self.y += self.y_velocity
+        # New attributes for hover effect
+        self.hovered = False
+        self.scale_factor = 1.0
+        self.target_scale = 1.05  # Target scale factor when hovered
+        self.current_color = self.bg_color
+        self.hover_color = (min(255, self.bg_color[0] + 30),  # Brighten the color for hover effect
+                            min(255, self.bg_color[1] + 30),
+                            min(255, self.bg_color[2] + 30))
+        self.anim_speed = 0.00005 * self.width
 
-        # Create a rectangle for collision detection
-        temp_rect = pygame.Rect(self.x, self.y, self.radius * 2, self.radius * 2)
+        # New attributes for effects
+        self.hover_alpha = 0  # Alpha for hover overlay
+        self.click_alpha = 0  # Alpha for click overlay
+        self.hover_increment = 15  # Speed of fade-in for hover effect
+        self.click_increment = 30  # Speed of fade-in for click effect
 
-        # Check for collision with screen boundaries and UI
-        if temp_rect.left <= cfg.UI_WIDTH or temp_rect.right >= cfg.screen_width:
-            self.x_velocity *= -1  # Reverse horizontal direction
-        if temp_rect.top <= 0 or temp_rect.bottom >= cfg.screen_height:
-            self.y_velocity *= -1  # Reverse vertical direction
+        self.clicked = False  # Track if the button is currently being clicked
 
-        # Update the position of the rect
-        self.rect.x, self.rect.y = round(self.x), round(self.y)
+    def update(self, mouse_pos, mouse_pressed):
+        # Hover detection
+        mouse_x, mouse_y = mouse_pos
+
+        # Check if the mouse is over the button
+        self.hovered = self.x <= mouse_x <= self.x + self.width and self.y <= mouse_y <= self.y + self.height
+        
+        # Hover alpha animation
+        if self.hovered:
+            self.hover_alpha = min(self.hover_alpha + self.hover_increment, 50)  # Cap at desired max alpha
+        else:
+            self.hover_alpha = max(self.hover_alpha - self.hover_increment, 0)
+        
+        # Click effect handling
+        if self.hovered and mouse_pressed[0]:  # Left mouse button is pressed
+            self.clicked = True
+        else:
+            self.clicked = False
+        
+        # Click alpha animation
+        if self.clicked:
+            self.click_alpha = min(self.click_alpha + self.click_increment, 50)  # Cap at desired max alpha
+        else:
+            self.click_alpha = max(self.click_alpha - self.click_increment, 0)
+        
+        # Animate scale
+        if self.hovered and self.scale_factor < self.target_scale:
+            self.scale_factor += self.anim_speed
+            self.scale_factor = min(self.scale_factor, self.target_scale)
+        elif not self.hovered and self.scale_factor > 1.0:
+            self.scale_factor -= self.anim_speed
+            self.scale_factor = max(self.scale_factor, 1.0)
+        
+        # Ensure color values remain within valid range
+        self.current_color = tuple(min(255, max(0, int(c))) for c in self.current_color)
 
     def draw(self, screen):
+        # Apply scale and adjust position to keep centered
+        scaled_width = int(self.width * self.scale_factor)
+        scaled_height = int(self.height * self.scale_factor)
+        scaled_x = self.x - (scaled_width - self.width) // 2
+        scaled_y = self.y - (scaled_height - self.height) // 2
+
+        # Draw the button with the current color and scaled size
+        pygame.draw.rect(screen, self.current_color, (scaled_x, scaled_y, scaled_width, scaled_height))
         # Set the colors
         button_color = (50, 50, 50)  # Dark gray background
         text_color = (255, 255, 255)  # White text
@@ -449,6 +498,23 @@ class Button:
         text_rect = text_surf.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
         screen.blit(text_surf, text_rect)
 
+        # Draw hover overlay
+        if self.hover_alpha > 0:
+            hover_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            hover_overlay.fill((255, 255, 255, self.hover_alpha))
+            self.width = min(scaled_width, self.base_width * 1.05)
+            self.height = min(scaled_height, self.base_height * 1.05)
+            screen.blit(hover_overlay, (self.x, self.y))
+        else:
+            self.width = self.base_width
+            self.height = self.base_height
+
+        if self.clicked:
+            hover_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            hover_overlay.fill((0, 0, 0, self.hover_alpha))
+            screen.blit(hover_overlay, (self.x, self.y))
+            time.sleep(1)
+
     def is_clicked(self, mouse_pos):
         x, y = mouse_pos
         return (self.x <= x <= self.x + self.width) and (self.y <= y <= self.y + self.height)
@@ -457,16 +523,16 @@ class Button:
         if self.action:
             return self.action(*self.action_args)  # Pass action_args to the function
 
-
 class UpgradeTile:
     def __init__(self, upgrade_name, description, x, y, width, height):
         self.upgrade_name = upgrade_name
         self.description = description
         self.x = x
         self.y = y
-        self.width = width
+        self.width = width + 15
         self.height = height
         self.button = Button("Choose", x + 10, y + height - 40, width - 20, 30, action=self.select_upgrade)
+        button_list.append(self.button)
 
     def draw(self, screen):
         # Set the colors
@@ -510,17 +576,23 @@ class Menu:
         self.buttons = []
 
     def add_button(self, button):
+        global button_list
         self.buttons.append(button)
+        button_list.append(button)
 
     def draw(self):
         for button in self.buttons:
             button.draw(self.screen)
 
     def handle_event(self, event):
+        global button_list, screen
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = event.pos
             for button in self.buttons:
-                if button.is_clicked(mouse_pos):
+                if button.is_clicked(mouse_pos) == True:
+                    button.update(mouse_pos, pygame.mouse.get_pos())
+                    button.draw(screen)
+                    button_list.clear()
                     return button.activate()
 
 
@@ -687,6 +759,8 @@ def draw_game(screen, player, enemies, projectiles, bosses):
     for boss in bosses:
         boss.draw(screen)
 
+    hover_effect()
+
     # Draw projectiles
     for projectile in projectiles:
         if projectile.is_active:
@@ -743,6 +817,15 @@ def draw_inventory(screen, player):
             powerup_info = player.inventory[i]
             powerup_color = powerup_info["color"]  # Access the color from the dictionary
             pygame.draw.circle(screen, powerup_color, (inventory_x + slot_width // 2, inventory_y + slot_height // 2 + i * (slot_height + slot_margin)), 26.4)
+
+def hover_effect():
+    global button_list
+    # Update and draw buttons with hover effect
+    mouse_pos = pygame.mouse.get_pos()  # Get the current mouse position
+    mouse_pressed = pygame.mouse.get_pressed()  # Get the state of the mouse buttons
+    for button in button_list:  # Assuming you have a list of buttons
+        button.update(mouse_pos, mouse_pressed)  # Update each button's state based on the mouse position
+        button.draw(screen)  # Draw the button with its current appearance
 
 def update_game_state(local_player, enemies, projectiles, powerups):
     global enemies_killed, bosses
@@ -819,7 +902,6 @@ def update_game_state(local_player, enemies, projectiles, powerups):
     for powerup in powerups:
         powerup.update()
 
-
     powerups[:] = [powerup for powerup in powerups if powerup.alpha > 0]
         
     # Check for collisions between enemies and players
@@ -858,7 +940,7 @@ def projectile_out_of_bounds(projectile):
             projectile.y < 0 or projectile.y > screen_height)
 
 def manage_waves(enemies, player):
-    global in_intermission, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected, boss_spawned, bosses
+    global in_intermission, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected, boss_spawned, bosses, button_list
 
     if len(enemies) == 0 and len(bosses) == 0 and not in_intermission:
         in_intermission = True
@@ -872,6 +954,9 @@ def manage_waves(enemies, player):
         enemies_per_wave += wave_increase_factor
         enemies.clear()
         bosses.clear()  # Clear any remaining bosses
+        for upgradeButton in button_list:
+            if upgradeButton.text == "Choose":
+                button_list.remove(upgradeButton)
 
         if current_wave % 4 == 0:
             # It's a boss round
@@ -900,6 +985,7 @@ def main_menu(screen):
     running = True
     while running:
         # Event handling
+        hover_effect()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -1055,7 +1141,7 @@ def update_projectiles(projectiles, received_projectiles):
             projectiles.append(new_projectile)
 
 def gameLoop():
-    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected, powerups, bosses
+    global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected, powerups, bosses, button_list
 
     # Initialization
     running = True
@@ -1120,6 +1206,7 @@ def gameLoop():
                                 tile.select_upgrade()
                                 upgrade_selected = True  # Set the flag to True after selecting an upgrade
                                 upgrade_tile_groups.clear()  # Clear all upgrade tiles
+                                button_list.clear()
                                 break
                         if upgrade_selected:
                             break
@@ -1146,6 +1233,7 @@ def gameLoop():
                 reset_game()
                 return "restart"
             elif action == "menu":
+                reset_game()
                 return "menu"
 
         clock.tick(fps)
@@ -1159,13 +1247,23 @@ def quit_game():
     sys.exit()
 
 def reset_game():
-    global player, enemies, projectiles, enemies_killed, current_wave
+    global player, enemies, projectiles, enemies_killed, current_wave, initial_player_x, initial_player_y, number_of_enemies, powerups, upgrade_tile_groups, bosses, enemies_per_wave, wave_increase_factor, upgrade_selected, button_list
     player = Player()
     player.x, player.y = initial_player_x, initial_player_y
     enemies = [spawn_enemy(initial_player_x, initial_player_y) for _ in range(number_of_enemies)]
     projectiles = []
     enemies_killed = 0
     current_wave = 1
+    initial_player_x = screen_width // 2
+    initial_player_y = screen_height // 2
+    number_of_enemies = 10
+    powerups = []
+    upgrade_tile_groups = []
+    bosses = []
+    enemies_per_wave = 5
+    wave_increase_factor = 3
+    upgrade_selected = False
+    button_list.clear()
 
 def main():
     global enemies, player, bosses

@@ -44,3 +44,4 @@ powerup_info = {
     "shoot_speed_boost": {"chance": 5, "color": WHITE},
     "move_speed_boost": {"chance": 5, "color": PURPLE}
 }
+button_list = []
