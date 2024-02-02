@@ -412,6 +412,8 @@ class Button:
         self.text = text
         self.x = x
         self.y = y
+        self.base_x = x
+        self.base_y = y
         self.width = width
         self.height = height
         self.base_width = width
@@ -432,9 +434,7 @@ class Button:
 
         # New attributes for effects
         self.hover_alpha = 0  # Alpha for hover overlay
-        self.click_alpha = 0  # Alpha for click overlay
         self.hover_increment = 15  # Speed of fade-in for hover effect
-        self.click_increment = 30  # Speed of fade-in for click effect
 
         self.clicked = False  # Track if the button is currently being clicked
 
@@ -456,25 +456,26 @@ class Button:
             self.clicked = True
         else:
             self.clicked = False
-        
-        # Click alpha animation
-        if self.clicked:
-            self.click_alpha = min(self.click_alpha + self.click_increment, 50)  # Cap at desired max alpha
+                
+        # Hover effect to expand the button in all directions
+        if self.hovered:
+            self.width = self.base_width * self.target_scale
+            self.height = self.base_height * self.target_scale
+            self.x = self.base_x - (self.width - self.base_width) // 2
+            self.y = self.base_y - (self.height - self.base_height) // 2
         else:
-            self.click_alpha = max(self.click_alpha - self.click_increment, 0)
-        
-        # Animate scale
-        if self.hovered and self.scale_factor < self.target_scale:
-            self.scale_factor += self.anim_speed
-            self.scale_factor = min(self.scale_factor, self.target_scale)
-        elif not self.hovered and self.scale_factor > 1.0:
-            self.scale_factor -= self.anim_speed
-            self.scale_factor = max(self.scale_factor, 1.0)
+            self.width = self.base_width
+            self.height = self.base_height
+            self.x = self.base_x
+            self.y = self.base_y
         
         # Ensure color values remain within valid range
         self.current_color = tuple(min(255, max(0, int(c))) for c in self.current_color)
 
     def draw(self, screen):
+        # Draw the button background with border
+        pygame.draw.rect(screen, self.current_color, (self.x, self.y, self.width, self.height))
+
         # Apply scale and adjust position to keep centered
         scaled_width = int(self.width * self.scale_factor)
         scaled_height = int(self.height * self.scale_factor)
@@ -509,18 +510,13 @@ class Button:
             self.width = self.base_width
             self.height = self.base_height
 
-        if self.clicked:
-            hover_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            hover_overlay.fill((0, 0, 0, self.hover_alpha))
-            screen.blit(hover_overlay, (self.x, self.y))
-            time.sleep(1)
-
     def is_clicked(self, mouse_pos):
         x, y = mouse_pos
         return (self.x <= x <= self.x + self.width) and (self.y <= y <= self.y + self.height)
 
     def activate(self):
         if self.action:
+            time.sleep(0.1)
             return self.action(*self.action_args)  # Pass action_args to the function
 
 class UpgradeTile:
@@ -531,7 +527,7 @@ class UpgradeTile:
         self.y = y
         self.width = width + 15
         self.height = height
-        self.button = Button("Choose", x + 10, y + height - 40, width - 20, 30, action=self.select_upgrade)
+        self.button = Button("Choose", x + 17.5, y + height - 40, width - 20, 30, action=self.select_upgrade)
         button_list.append(self.button)
 
     def draw(self, screen):
@@ -591,9 +587,15 @@ class Menu:
             for button in self.buttons:
                 if button.is_clicked(mouse_pos) == True:
                     button.update(mouse_pos, pygame.mouse.get_pos())
-                    button.draw(screen)
                     button_list.clear()
+                    button.draw(screen)
                     return button.activate()
+
+    def reset_button_states(self):
+        for button in self.buttons:
+            button.hovered = False
+            button.hover_alpha = 0
+
 
 
 def draw_bar(surface, value, max_value, x, y, width, height, bar_color, background_color):
@@ -972,15 +974,17 @@ def manage_waves(enemies, player):
         upgrade_selected = False  # Reset the flag after the intermission ends
 
 def main_menu(screen):
-    global is_multiplayer
+    global is_multiplayer, back_to_main
 
     # Create the main menu instance
     main_menu = Menu(screen)
 
     # Add buttons to the main menu
     main_menu.add_button(Button("Play", 100, 200, 200, 50, action=gameLoop))
-    main_menu.add_button(Button("Instructions", 100, 300, 150, 50, action=instructions, action_args=[screen]))
-    main_menu.add_button(Button("Quit", 100, 400, 100, 50, action=quit_game))
+    main_menu.add_button(Button("Quit", 100, 300, 100, 50, action=quit_game))
+
+    # Reset button states
+    main_menu.reset_button_states()
 
     running = True
     while running:
@@ -997,27 +1001,6 @@ def main_menu(screen):
         main_menu.draw()
         pygame.display.update()
 
-def instructions(screen):
-    instructions_menu = Menu(screen)
-    instructions_menu.add_button(Button("Back", 100, 500, 100, 50, action=back_to_main_menu))
-
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            else:
-                instructions_menu.handle_event(event)
-
-        screen.fill((0, 0, 0))  # Fill screen with background color
-        draw_text(screen, "Game Instructions:", 36, 50, 50, WHITE)
-        draw_text(screen, "Use arrow keys to move", 30, 50, 100, WHITE)
-        draw_text(screen, "Click to shoot", 30, 50, 150, WHITE)
-        # Add more instructions as needed
-        instructions_menu.draw()
-        pygame.display.update()
-
 def pause_menu(screen):
     pause_menu = Menu(screen)
     pause_menu.add_button(Button("Resume", screen_width // 2 - 100, 200, 200, 50, action=lambda: "resume"))
@@ -1030,6 +1013,7 @@ def pause_menu(screen):
 
     pause = True
     while pause:
+        hover_effect()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -1057,6 +1041,7 @@ def game_over(screen, current_wave, enemies_killed):
     screen.blit(overlay, (0, 0))
 
     while True:
+        hover_effect()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -1162,7 +1147,7 @@ def gameLoop():
     local_player = Player()
     enemies = [spawn_enemy(local_player.x, local_player.y) for _ in range(enemies_per_wave)]
     group_to_remove = None
-
+    
     while running:
         current_time = pygame.time.get_ticks()
 

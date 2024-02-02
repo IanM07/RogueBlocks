@@ -8,7 +8,6 @@ UI_WIDTH = 325
 SCREEN_WIDTH = 1800  
 SCREEN_HEIGHT = 900
 
-
 # HP and Stamina Bar Constants
 BAR_WIDTH = 225
 BAR_HEIGHT = 30
