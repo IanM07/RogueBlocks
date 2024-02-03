@@ -1,6 +1,5 @@
 import pygame
 import sys
-import json
 import random
 import importlib
 import time
@@ -40,6 +39,33 @@ class Player:
         self.knockback_velocity_x = 0
         self.knockback_velocity_y = 0
         self.knockback_end_time = 0
+        self.last_wall_hit_time = 0
+
+    def keep_in_bounds(self):
+        sound_effect = pygame.mixer.Sound("audio/hitWall.wav")
+        sound_effect.set_volume(0.18)
+        current_time = time.time()  # Get the current time in seconds
+        if self.rect.left < 0:
+            self.rect.left = 0
+            if current_time - self.last_wall_hit_time > 1:  # Check if 1 second has passed
+                sound_effect.play()
+                self.last_wall_hit_time = current_time  # Update the last wall hit time
+        if self.rect.right > cfg.screen_width:
+            self.rect.right = cfg.screen_width
+            if current_time - self.last_wall_hit_time > 1:  # Check if 1 second has passed
+                sound_effect.play()
+                self.last_wall_hit_time = current_time  # Update the last wall hit time
+        if self.rect.top < 0:
+            self.rect.top = 0
+            if current_time - self.last_wall_hit_time > 1:  # Check if 1 second has passed
+                sound_effect.play()
+                self.last_wall_hit_time = current_time  # Update the last wall hit time
+        if self.rect.bottom > cfg.screen_height:
+            self.rect.bottom = cfg.screen_height
+            if current_time - self.last_wall_hit_time > 1:  # Check if 1 second has passed
+                sound_effect.play()
+                self.last_wall_hit_time = current_time  # Update the last wall hit time
+
 
     def handle_keys(self, keys):
         keys = pygame.key.get_pressed()
@@ -73,6 +99,8 @@ class Player:
             if self.can_move(new_x, new_y):
                 self.y = new_y
 
+        self.keep_in_bounds()
+
         # Handle inventory key presses
         if keys[pygame.K_1]:
             self.use_powerup(0)  # Use the powerup in the first slot
@@ -94,11 +122,17 @@ class Player:
     def add_to_inventory(self, powerup_info):
         if len(self.inventory) < 3:  # Maximum of 3 items in inventory
             self.inventory.append(powerup_info)
+            sound_effect = pygame.mixer.Sound("audio/pickupPowerup.wav")
+            sound_effect.set_volume(0.18)
+            sound_effect.play()
 
     def use_powerup(self, slot_index):
         current_time = pygame.time.get_ticks()
         if 0 <= slot_index < len(self.inventory) and current_time - self.last_powerup_use_time > self.powerup_use_cooldown:
             self.activate_powerup(self.inventory.pop(slot_index))  # Remove the used powerup
+            sound_effect = pygame.mixer.Sound("audio/usePowerup.wav")
+            sound_effect.set_volume(0.18)
+            sound_effect.play()
             self.last_powerup_use_time = current_time
 
     def activate_powerup(self, powerup_info):
@@ -215,6 +249,10 @@ class Player:
         current_time = pygame.time.get_ticks()
         if(self.invincible == False):
             self.hp = self.hp - 1 + self.damage_reduction  # Reduce HP by 1 - total damage reduction
+            sound_effect = pygame.mixer.Sound("audio/playerDamage.wav")
+            sound_effect.set_volume(0.18)
+            sound_effect.play()
+
 
     def shoot(self, target_x, target_y):
         # Calculate direction vector towards the target (mouse position)
@@ -252,6 +290,7 @@ class Enemy:
         self.jitter_timer = 0
         self.target_dx = 0
         self.target_dy = 0
+        self.fire_squares = []  # List to hold the fire squares
 
     def move_towards_player(self, player):
         # Increment jitter timer
@@ -275,20 +314,56 @@ class Enemy:
 
         self.rect.x, self.rect.y = round(self.x), round(self.y)  # Update rect position
 
+    def update_fire_effect(self):
+        # Add new fire squares to simulate flames
+        if random.random() < 0.5:  # Adjust probability to control density
+            self.add_fire_square()
+
+        # Update existing fire squares
+        for square in self.fire_squares[:]:  # Iterate over a copy of the list
+            square['y'] += random.uniform(-1, 1)  # Slight vertical jitter can add to the effect
+            square['lifetime'] += 1
+            if square['lifetime'] > 30:  # Shorter lifetime
+                self.fire_squares.remove(square)
+
+    def add_fire_square(self):
+        colors = [(255, 150, 0), (255, 69, 0), (255, 215, 0)]  # Different shades for fire
+        for _ in range(5):  # Add multiple squares at once for a denser effect
+            color = random.choice(colors)
+            offset_x = random.uniform(-20, 20)
+            offset_y = random.uniform(-20, 20)
+            square = {
+                'x': self.x + offset_x + 20,
+                'y': self.y + offset_y + 20,
+                'color': color,
+                'lifetime': 0
+            }
+            self.fire_squares.append(square)
 
     def draw(self, surface):
         if self.x > cfg.UI_WIDTH:  # Only draw if outside the UI area
             surface.blit(self.image, self.rect)
+            if self.x > cfg.UI_WIDTH:  # Check based on your game's UI configuration
+                surface.blit(self.image, self.rect)
             
+            # Draw fire squares
+            for square in self.fire_squares:
+                s = pygame.Surface((5, 5), pygame.SRCALPHA)
+                alpha = max(0, 255 - square['lifetime'] * 10)  # Increase fade-out speed
+                s.fill((*square['color'], alpha))  # Set color with alpha
+                surface.blit(s, (square['x'], square['y']))  # Draw square
+
 class Boss:
     def __init__(self, x, y, boss_type, health):
         self.x, self.y = x, y
         self.boss_type = boss_type
         self.hp = health
+        self.max_hp = health
         self.image = pygame.Surface((80, 80))
         self.image.fill((200, 0, 0))
         self.rect = self.image.get_rect(topleft=(self.x, self.y))
         self.speed = 2
+        self.squares = []
 
         if self.boss_type == 'dasher':
             self.dash_speed = 20  # Speed of the dash
@@ -319,12 +394,45 @@ class Boss:
 
                 else:
                     self.continue_dash()
+        
+        # Update squares
+        for square in self.squares[:]:  # Iterate over a copy of the list
+            square['angle'] += 5  # Update angle for spinning
+            square['lifetime'] += 5  # Update lifetime for fading
+
+            # Remove square if its lifetime exceeds a threshold (e.g., 100 frames)
+            if square['lifetime'] > 1000:
+                self.squares.remove(square)
+
+
+    def draw_hp_bar(self, surface, max_health):
+        bar_width = 160
+        bar_height = 13
+        bar_color = (255, 0, 0)  # red color for the health bar
+        background_color = (50, 50, 50)  # dark gray for the background
+
+        bar_x = self.x - 38
+        bar_y = self.y - 30  # position the bar above the boss
+
+        draw_bar(surface, self.hp, self.max_hp, bar_x, bar_y, bar_width, bar_height, bar_color, background_color)
+
+    def dash_effect(self, surface):
+        # Spawn squares with wider offsets
+        for _ in range(10):  # Spawn 5 squares or adjust as needed
+            square = {
+                'x': self.x + random.uniform(-40, 40),  # Increase the range for a wider spread
+                'y': self.y + random.uniform(-40, 40),  # Increase the range for a wider spread
+                'angle': 0,
+                'lifetime': 0
+            }
+            self.squares.append(square)
 
     def start_dash(self, player):
         self.dashing = True
         self.dash_target = (player.x, player.y)
         self.last_dash_time = pygame.time.get_ticks()
         self.dash_count += 1
+        self.dash_effect(screen)
 
     def continue_dash(self):
         if self.dash_target:
@@ -333,12 +441,26 @@ class Boss:
             self.x += (target_dx / distance) * self.dash_speed
             self.y += (target_dy / distance) * self.dash_speed
             self.rect.x, self.rect.y = round(self.x), round(self.y)
+            self.dash_effect(screen)
 
     def end_dash(self):
         self.dashing = False
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
+        # Draw squares
+        for square in self.squares:
+            # Create a surface for the square with an alpha channel for transparency
+            s = pygame.Surface((5, 5), pygame.SRCALPHA)
+            # Calculate fading based on lifetime (e.g., start fading after 50 frames)
+            alpha = max(0, min(255, 255 - (square['lifetime'])))  # Ensure alpha is within 0-255
+            s.fill((255, 0, 0, alpha))  # Apply fading effect
+            # Rotate the square surface
+            s = pygame.transform.rotate(s, square['angle'])
+            # Correct the position after rotation
+            new_rect = s.get_rect(center=(square['x'], square['y']))
+            # Draw the rotated and faded square
+            surface.blit(s, new_rect.topleft)
 
 class Projectile:
     next_id = 0  # Class variable to generate unique IDs
@@ -353,6 +475,9 @@ class Projectile:
         self.id = Projectile.next_id
         self.is_active = True  
         Projectile.next_id += 1
+        sound_effect = pygame.mixer.Sound("audio/shootBullet.wav")
+        sound_effect.set_volume(0.13)
+        sound_effect.play()
 
     def update(self):
         self.x += self.x_velocity
@@ -516,7 +641,9 @@ class Button:
 
     def activate(self):
         if self.action:
-            time.sleep(0.1)
+            sound_effect = pygame.mixer.Sound("audio/clickButton.wav")
+            sound_effect.set_volume(0.25)
+            sound_effect.play()
             return self.action(*self.action_args)  # Pass action_args to the function
 
 class UpgradeTile:
@@ -561,6 +688,9 @@ class UpgradeTile:
     def select_upgrade(self):
         global local_player, powerups
         local_player.apply_upgrade(self.upgrade_name)
+        sound_effect = pygame.mixer.Sound("audio/clickButton.wav")
+        sound_effect.set_volume(0.25)
+        sound_effect.play()
 
         # Trigger fading for all powerups
         for powerup in powerups:
@@ -595,8 +725,6 @@ class Menu:
         for button in self.buttons:
             button.hovered = False
             button.hover_alpha = 0
-
-
 
 def draw_bar(surface, value, max_value, x, y, width, height, bar_color, background_color):
     # Draw the background of the bar (empty part)
@@ -653,14 +781,14 @@ def draw_player_stats(screen, player, start_x, start_y):
         text_surface = font.render(stat, True, (255, 255, 255))  # White color text
         screen.blit(text_surface, (start_x, start_y + i * line_height))
 
-def handle_player_input(player):
+def handle_player_input(player, upgrade_time):
     current_time = pygame.time.get_ticks()
     keys = pygame.key.get_pressed()
     player.handle_keys(keys)
 
     # Mouse button handling for shooting
     mouse_button_down = pygame.mouse.get_pressed()[0]
-    if mouse_button_down and current_time - player.last_shot_time > player.shot_delay:
+    if mouse_button_down and current_time - player.last_shot_time > player.shot_delay and current_time - upgrade_time > 5:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         new_projectile = player.shoot(mouse_x, mouse_y)
         projectiles.append(new_projectile)
@@ -753,6 +881,7 @@ def draw_game(screen, player, enemies, projectiles, bosses):
     # Draw enemies and projectiles
     for enemy in enemies:
         enemy.draw(screen)
+        enemy.update_fire_effect()  # Update fire effect
 
     # Draw power-ups
     for powerup in powerups:
@@ -760,8 +889,7 @@ def draw_game(screen, player, enemies, projectiles, bosses):
 
     for boss in bosses:
         boss.draw(screen)
-
-    hover_effect()
+        boss.draw_hp_bar(screen, boss.max_hp)
 
     # Draw projectiles
     for projectile in projectiles:
@@ -827,11 +955,15 @@ def hover_effect():
     mouse_pressed = pygame.mouse.get_pressed()  # Get the state of the mouse buttons
     for button in button_list:  # Assuming you have a list of buttons
         button.update(mouse_pos, mouse_pressed)  # Update each button's state based on the mouse position
-        button.draw(screen)  # Draw the button with its current appearance
+        if(mouse_pos == button.x and mouse_pos == button.y):
+            button.draw(screen)  # Draw the button with its current appearance
 
 def update_game_state(local_player, enemies, projectiles, powerups):
     global enemies_killed, bosses
 
+    sound_effect = pygame.mixer.Sound("audio/hitEnemy.wav")
+    sound_effect.set_volume(0.18)
+    
     # Update local player
     local_player.update()
 
@@ -862,6 +994,7 @@ def update_game_state(local_player, enemies, projectiles, powerups):
                 # Handle collision with projectile
                 boss.hp -= 1  # Example
                 projectile.is_active = False
+                sound_effect.play()
 
                 if boss.hp <= 0:
                     bosses.remove(boss)
@@ -886,6 +1019,7 @@ def update_game_state(local_player, enemies, projectiles, powerups):
                             powerups.append(powerup)
                             
                         enemies.remove(enemy)
+                        sound_effect.play()
                         projectile.is_active = False
                         enemies_killed += 1
                         break
@@ -1004,7 +1138,7 @@ def main_menu(screen):
 def pause_menu(screen):
     pause_menu = Menu(screen)
     pause_menu.add_button(Button("Resume", screen_width // 2 - 100, 200, 200, 50, action=lambda: "resume"))
-    pause_menu.add_button(Button("Quit", screen_width // 2 - 100, 300, 200, 50, action=lambda: "quit"))
+    pause_menu.add_button(Button("Quit", screen_width // 2 - 100, 300, 200, 50, action=back_to_main_menu))
 
     overlay = pygame.Surface((screen_width, screen_height))
     overlay.set_alpha(128)
@@ -1140,6 +1274,7 @@ def gameLoop():
     upgrade_selected = False
     clock = pygame.time.Clock()
     fps = 60
+    upgrade_time = 0
     last_health_regeneration_time = pygame.time.get_ticks()  # Initialize the last health regeneration time
     health_regeneration_interval = 1000  # 1 second interval for health regeneration
 
@@ -1148,6 +1283,7 @@ def gameLoop():
     enemies = [spawn_enemy(local_player.x, local_player.y) for _ in range(enemies_per_wave)]
     group_to_remove = None
     
+    time.sleep(0.1)
     while running:
         current_time = pygame.time.get_ticks()
 
@@ -1160,6 +1296,8 @@ def gameLoop():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                pygame.quit()
+                sys.exit()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 action = pause_menu(screen)
                 if action == "quit":
@@ -1175,13 +1313,6 @@ def gameLoop():
             # Separate handling for mouse button down
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
-                
-                # Handle firing a bullet
-                current_time = pygame.time.get_ticks()
-                if current_time - local_player.last_shot_time > local_player.shot_delay:
-                    new_projectile = local_player.shoot(mouse_x, mouse_y)
-                    projectiles.append(new_projectile)
-                    local_player.last_shot_time = current_time
 
                 # Check for button clicks on upgrade tiles during intermission
                 if in_intermission:
@@ -1192,12 +1323,13 @@ def gameLoop():
                                 upgrade_selected = True  # Set the flag to True after selecting an upgrade
                                 upgrade_tile_groups.clear()  # Clear all upgrade tiles
                                 button_list.clear()
+                                upgrade_time = current_time
                                 break
                         if upgrade_selected:
                             break
-        
+                        
         # Player input handling
-        handle_player_input(local_player)
+        handle_player_input(local_player, upgrade_time)
 
         # Handle collisions between enemies
         handle_enemy_collisions(enemies)
@@ -1208,6 +1340,8 @@ def gameLoop():
         # Manage game waves
         manage_waves(enemies, local_player)
         
+        hover_effect()
+
         # Drawing
         draw_game(screen, local_player, enemies, projectiles, bosses)
 
@@ -1262,4 +1396,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
