@@ -44,3 +44,18 @@ powerup_info = {
     "move_speed_boost": {"chance": 5, "color": PURPLE}
 }
 button_list = []
+
+# Load in game soundtracks
+soundtracks = [
+    "audio/soundtracks/Harmful or Fatal.mp3",
+    "audio/soundtracks/In a Heartbeat.mp3",
+    "audio/soundtracks/Latin Industries.mp3",
+    "audio/soundtracks/MTA.mp3",
+]
+current_song = None
+
+# Explicitly define game states for soundtrack control
+GAME_STATES = {'MAIN_MENU': 1, 'PLAYING': 2, 'PAUSED': 3, 'GAME_OVER': 4}
+current_state = GAME_STATES['MAIN_MENU']
+main_menu_music_playing = False
+current_track = None

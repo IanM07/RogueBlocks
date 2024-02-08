@@ -547,7 +547,7 @@ class Button:
         self.action_args = action_args
         self.bg_color = bg_color
 
-        # New attributes for hover effect
+        # Attributes for hover effect
         self.hovered = False
         self.scale_factor = 1.0
         self.target_scale = 1.05  # Target scale factor when hovered
@@ -557,10 +557,9 @@ class Button:
                             min(255, self.bg_color[2] + 30))
         self.anim_speed = 0.00005 * self.width
 
-        # New attributes for effects
+        # Attributes for effects
         self.hover_alpha = 0  # Alpha for hover overlay
         self.hover_increment = 15  # Speed of fade-in for hover effect
-
         self.clicked = False  # Track if the button is currently being clicked
 
     def update(self, mouse_pos, mouse_pressed):
@@ -867,14 +866,17 @@ def draw_wave_and_kill_count(screen, current_wave, enemies_killed):
 def draw_game(screen, player, enemies, projectiles, bosses):
     screen.fill((0, 0, 0))  # Clear screen with black background
 
+    draw_background = False
+
     # Draw the UI area background
-    ui_background = pygame.Rect(0, 0, cfg.UI_WIDTH, cfg.SCREEN_HEIGHT)
-    pygame.draw.rect(screen, (128, 128, 128), ui_background)  # Grey background for UI
+    if draw_background == False:
+        ui_background = pygame.Rect(0, 0, cfg.UI_WIDTH, cfg.SCREEN_HEIGHT)
+        pygame.draw.rect(screen, (128, 128, 128), ui_background)  # Grey background for UI
 
     # Draw UI elements within the UI area
     ui_offset_x = 20  # Horizontal offset for UI elements from the edge of the UI area
     ui_offset_y = 20  # Vertical offset for UI elements from the top of the UI area
-    
+
     # Draw player and remote player (in multiplayer mode)
     player.draw(screen)
 
@@ -904,10 +906,10 @@ def draw_game(screen, player, enemies, projectiles, bosses):
     draw_wave_and_kill_count(screen, current_wave, enemies_killed)
 
     if in_intermission:
-        draw_text(screen, f"Select an Upgrade to Begin Next Round", 36, 800, BAR_Y + BAR_HEIGHT + 10, WHITE)
-        for tile_group in upgrade_tile_groups:
-            for tile in tile_group:
-                tile.draw(screen)
+            draw_text(screen, f"Select an Upgrade to Begin Next Round", 36, 800, BAR_Y + BAR_HEIGHT + 10, WHITE)
+            for tile_group in upgrade_tile_groups:
+                for tile in tile_group:
+                    tile.draw(screen)
                 
     # Updates player stats
     draw_player_stats(screen, player, ui_offset_x, ui_offset_y + 80)  # Offset needs to be below the last bar
@@ -955,7 +957,7 @@ def hover_effect():
     mouse_pressed = pygame.mouse.get_pressed()  # Get the state of the mouse buttons
     for button in button_list:  # Assuming you have a list of buttons
         button.update(mouse_pos, mouse_pressed)  # Update each button's state based on the mouse position
-        if(mouse_pos == button.x and mouse_pos == button.y):
+        if(button.hovered):
             button.draw(screen)  # Draw the button with its current appearance
 
 def update_game_state(local_player, enemies, projectiles, powerups):
@@ -1076,7 +1078,7 @@ def projectile_out_of_bounds(projectile):
             projectile.y < 0 or projectile.y > screen_height)
 
 def manage_waves(enemies, player):
-    global in_intermission, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected, boss_spawned, bosses, button_list
+    global waiting_to_choose, in_intermission, current_wave, enemies_per_wave, wave_increase_factor, upgrade_tile_groups, upgrade_selected, boss_spawned, bosses, button_list
 
     if len(enemies) == 0 and len(bosses) == 0 and not in_intermission:
         in_intermission = True
@@ -1108,14 +1110,17 @@ def manage_waves(enemies, player):
         upgrade_selected = False  # Reset the flag after the intermission ends
 
 def main_menu(screen):
-    global is_multiplayer, back_to_main
+    global is_multiplayer, back_to_main, main_menu_music_playing
+
+    main_menu_music_playing = False
 
     # Create the main menu instance
     main_menu = Menu(screen)
 
     # Add buttons to the main menu
-    main_menu.add_button(Button("Play", 100, 200, 200, 50, action=gameLoop))
-    main_menu.add_button(Button("Quit", 100, 300, 100, 50, action=quit_game))
+    main_menu.add_button(Button("Play", 100, 200, 175, 50, action=gameLoop))
+    main_menu.add_button(Button("Credits", 100, 300, 175, 50, action=credits, action_args=(screen,)))
+    main_menu.add_button(Button("Quit", 100, 400, 175, 50, action=quit_game))
 
     # Reset button states
     main_menu.reset_button_states()
@@ -1123,16 +1128,54 @@ def main_menu(screen):
     running = True
     while running:
         # Event handling
+        # Play main menu music
+        if not main_menu_music_playing:
+            play_main_menu_music()
+            main_menu_music_playing = True
+
         hover_effect()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                sys.exit()
             else:
                 main_menu.handle_event(event)
 
         # Drawing the menu
         screen.fill(BLACK)  # Clear screen with black background
+        draw_text(screen, "RogueBlocks", 52, 100, 100)
         main_menu.draw()
+        pygame.display.update()
+
+def credits(screen):
+    # Create the main menu instance
+    credit_screen = Menu(screen)
+
+    # Add buttons to the main menu
+    credit_screen.add_button(Button("Back", 1450, 800, 100, 50, action=back_to_main_menu))
+
+    # Reset button states
+    credit_screen.reset_button_states()
+
+    running = True
+    while running:
+        hover_effect()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                sys.exit()
+            else:
+                credit_screen.handle_event(event)
+
+        # Drawing the menu
+        screen.fill(BLACK)  # Clear screen with black background
+        draw_text(screen, "Programming, design, and sound effects by: Ian McMullen", 36, 100, BAR_Y + BAR_HEIGHT)
+        draw_text(screen, f"""Music kindly provided by:""", 36, 100, BAR_Y + BAR_HEIGHT + 100)
+        draw_text(screen, f""""MTA","In a Heartbeat", "Latin Industries", "Club Diver", "Harmful or Fatal" """, 36, 100, BAR_Y + BAR_HEIGHT + 136)
+        draw_text(screen, f"""Kevin MacLeod (incompetech.com)""", 36, 100, BAR_Y + BAR_HEIGHT + 172)
+        draw_text(screen, f"""Licensed under Creative Commons: By Attribution 3.0""", 36, 100, BAR_Y + BAR_HEIGHT + 208)
+        draw_text(screen, f"""http://creativecommons.org/licenses/by/3.0/""", 36, 100, BAR_Y + BAR_HEIGHT + 240)
+        credit_screen.draw()
         pygame.display.update()
 
 def pause_menu(screen):
@@ -1259,6 +1302,36 @@ def update_projectiles(projectiles, received_projectiles):
             new_projectile.is_active = p_data.get('is_active', True)
             projectiles.append(new_projectile)
 
+
+    pygame.mixer.music.fadeout(fade_ms)
+
+def play_main_menu_music():
+    global current_song
+    if current_song != "menu_song":
+        if pygame.mixer.music.get_busy():  # Check if any music is currently playing
+            pygame.mixer.music.fadeout(1000)  # Fade out the current music
+        pygame.mixer.music.load("audio/soundtracks/Club Diver.mp3")
+        current_song = "menu_song"
+        pygame.mixer.music.play(-1, 0, 1000)
+        pygame.mixer.music.set_volume(0.2)
+
+def play_game_music():
+    global current_track, current_song  # Use the global variable to keep track across function calls
+    if not pygame.mixer.music.get_busy():
+        pygame.mixer.music.fadeout(1000)  # Fade out the current music
+
+        # Ensure a different track is chosen
+        next_track = current_track
+        while next_track == current_track:
+            next_track = random.choice(soundtracks)
+        
+        current_track = next_track
+
+        pygame.mixer.music.load(next_track)
+        pygame.mixer.music.play(0, 0, 1000)
+        pygame.mixer.music.set_volume(0.2)
+        current_song = "game_song"
+
 def gameLoop():
     global local_player, enemies_killed, current_wave, in_intermission, intermission_timer, projectiles, enemies_per_wave, projectiles, upgrade_tile_groups, upgrade_selected, powerups, bosses, button_list
 
@@ -1283,9 +1356,15 @@ def gameLoop():
     enemies = [spawn_enemy(local_player.x, local_player.y) for _ in range(enemies_per_wave)]
     group_to_remove = None
     
+    # Fade out main menu music
+    pygame.mixer.music.fadeout(1000)
+
     time.sleep(0.1)
     while running:
         current_time = pygame.time.get_ticks()
+
+        #Begin playing soundtracks
+        play_game_music()
 
         # Health regeneration logic
         if current_time - last_health_regeneration_time >= health_regeneration_interval:
